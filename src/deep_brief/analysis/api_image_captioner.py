@@ -138,16 +138,31 @@ Provide a single paragraph caption (2-4 sentences) that would help someone under
             )
 
             caption = message.content[0].text
-            tokens = message.usage.input_tokens + message.usage.output_tokens
+            tokens_in = message.usage.input_tokens
+            tokens_out = message.usage.output_tokens
+            tokens_total = tokens_in + tokens_out
 
-            # Rough cost estimate (Claude 3.5 Sonnet pricing)
-            cost = (message.usage.input_tokens / 1000 * 0.003) + (
-                message.usage.output_tokens / 1000 * 0.015
+            # Claude 4.x pricing (per million tokens)
+            # Source: https://www.anthropic.com/pricing
+            pricing = {
+                "claude-haiku-4-5": (0.80, 4.00),  # $0.80 input, $4.00 output per MTok
+                "claude-sonnet-4-5": (3.00, 15.00),  # $3.00 input, $15.00 output per MTok
+                "claude-opus-4-1": (15.00, 75.00),  # $15.00 input, $75.00 output per MTok
+                # Legacy 3.x models
+                "claude-3-5-sonnet-20241022": (3.00, 15.00),
+            }
+
+            # Get pricing for current model, default to Sonnet if unknown
+            input_price, output_price = pricing.get(self.model, (3.00, 15.00))
+
+            # Calculate cost in dollars
+            cost = (tokens_in / 1_000_000 * input_price) + (
+                tokens_out / 1_000_000 * output_price
             )
 
             return {
                 "caption": caption.strip(),
-                "tokens": tokens,
+                "tokens": tokens_total,
                 "cost": cost,
             }
 
@@ -187,14 +202,29 @@ Provide a single paragraph caption (2-4 sentences) that would help someone under
             )
 
             caption = response.choices[0].message.content
-            tokens = response.usage.total_tokens
+            tokens_in = response.usage.prompt_tokens
+            tokens_out = response.usage.completion_tokens
+            tokens_total = response.usage.total_tokens
 
-            # Rough cost estimate (GPT-4V pricing)
-            cost = tokens / 1000 * 0.01  # Approximate
+            # OpenAI pricing (per million tokens)
+            # Source: https://openai.com/api/pricing/
+            pricing = {
+                "gpt-4o": (2.50, 10.00),  # $2.50 input, $10.00 output per MTok
+                "gpt-4o-mini": (0.150, 0.600),  # $0.15 input, $0.60 output per MTok
+                "gpt-4-turbo": (10.00, 30.00),  # $10.00 input, $30.00 output per MTok
+            }
+
+            # Get pricing for current model, default to gpt-4o
+            input_price, output_price = pricing.get(self.model, (2.50, 10.00))
+
+            # Calculate cost in dollars
+            cost = (tokens_in / 1_000_000 * input_price) + (
+                tokens_out / 1_000_000 * output_price
+            )
 
             return {
                 "caption": caption.strip(),
-                "tokens": tokens,
+                "tokens": tokens_total,
                 "cost": cost,
             }
 
@@ -226,13 +256,32 @@ Provide a single paragraph caption (2-4 sentences) that would help someone under
 
             caption = response.text
 
-            # Token counting not always available in Gemini
-            tokens = None
-            cost = None  # Gemini pricing varies
+            # Get token usage from Gemini response
+            tokens_in = response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else None
+            tokens_out = response.usage_metadata.candidates_token_count if hasattr(response, 'usage_metadata') else None
+            tokens_total = (tokens_in + tokens_out) if (tokens_in and tokens_out) else None
+
+            # Gemini pricing (per million tokens)
+            # Source: https://ai.google.dev/pricing
+            pricing = {
+                "gemini-2.5-flash": (0.075, 0.30),  # $0.075 input, $0.30 output per MTok
+                "gemini-1.5-flash": (0.075, 0.30),  # Same pricing
+                "gemini-1.5-pro": (1.25, 5.00),  # $1.25 input, $5.00 output per MTok
+            }
+
+            # Get pricing for current model
+            input_price, output_price = pricing.get(self.model, (0.075, 0.30))
+
+            # Calculate cost in dollars
+            cost = None
+            if tokens_in and tokens_out:
+                cost = (tokens_in / 1_000_000 * input_price) + (
+                    tokens_out / 1_000_000 * output_price
+                )
 
             return {
                 "caption": caption.strip(),
-                "tokens": tokens,
+                "tokens": tokens_total,
                 "cost": cost,
             }
 
