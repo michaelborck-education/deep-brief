@@ -286,7 +286,6 @@ class SceneDetector:
                 scene_stream,
                 "-",
                 f="null",
-                vf=f"scdet=threshold={threshold}:sc_pass=1",
                 loglevel="info",
             )
 

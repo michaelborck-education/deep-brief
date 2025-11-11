@@ -438,18 +438,17 @@ class VideoProcessor:
             stream = ffmpeg.output(stream, str(output_path), **frame_args)
             stream = ffmpeg.overwrite_output(stream)
 
-            # Execute extraction with timeout
+            # Execute extraction (ffmpeg.run doesn't support timeout parameter)
             try:
                 ffmpeg.run(
                     stream,
                     quiet=True,
                     capture_stdout=True,
                     capture_stderr=True,
-                    timeout=30,  # 30 second timeout for frame extraction
                 )
             except subprocess.TimeoutExpired as e:
                 raise FrameExtractionError(
-                    message="Frame extraction timed out after 30 seconds",
+                    message="Frame extraction timed out",
                     timestamp=timestamp,
                     scene_number=scene_number,
                     file_path=video_info.file_path,

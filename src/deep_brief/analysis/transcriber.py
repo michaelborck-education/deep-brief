@@ -6,6 +6,7 @@ for video analysis applications.
 
 import logging
 import warnings
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -449,6 +450,62 @@ class WhisperTranscriber:
                 error_code=error_code,
                 file_path=audio_info.file_path,
                 details=details,
+                cause=e,
+            ) from e
+
+    def transcribe_from_path(
+        self,
+        audio_path: Path | str,
+        language: str | None = None,
+        **kwargs
+    ) -> TranscriptionResult:
+        """
+        Convenience method to transcribe audio from a file path.
+
+        This method probes the audio file to get metadata, then calls transcribe_audio.
+
+        Args:
+            audio_path: Path to audio file
+            language: Language code or None for auto-detection
+            **kwargs: Additional arguments passed to transcribe_audio
+
+        Returns:
+            TranscriptionResult with transcription and metadata
+        """
+        import ffmpeg
+
+        audio_path = Path(audio_path)
+        logger.info(f"Transcribing audio from path: {audio_path}")
+
+        # Probe audio file to get metadata
+        try:
+            probe = ffmpeg.probe(str(audio_path))
+            audio_stream = next(s for s in probe['streams'] if s['codec_type'] == 'audio')
+
+            duration = float(probe['format']['duration'])
+            sample_rate = int(audio_stream['sample_rate'])
+            channels = int(audio_stream['channels'])
+            size_mb = int(probe['format']['size']) / (1024 * 1024)
+
+            # Create AudioInfo object
+            audio_info = AudioInfo(
+                file_path=audio_path,
+                duration=duration,
+                sample_rate=sample_rate,
+                channels=channels,
+                size_mb=size_mb,
+                format=audio_stream['codec_name']
+            )
+
+            # Call the main transcription method
+            return self.transcribe_audio(audio_info, language=language, **kwargs)
+
+        except Exception as e:
+            logger.error(f"Failed to probe or transcribe audio file: {e}")
+            raise AudioProcessingError(
+                message=f"Failed to transcribe audio from path: {e}",
+                error_code=ErrorCode.AUDIO_EXTRACTION_FAILED,
+                file_path=audio_path,
                 cause=e,
             ) from e
 

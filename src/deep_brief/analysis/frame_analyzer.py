@@ -248,7 +248,50 @@ class FrameAnalysisPipeline:
         )
         
         return extracted_frame
-    
+
+    def analyze_frame_from_path(
+        self,
+        frame_path: Path | str,
+        frame_number: int | None = None,
+        timestamp: float | None = None,
+        scene_number: int | None = None,
+    ) -> ExtractedFrame:
+        """
+        Convenience method to analyze a frame from a file path.
+
+        Args:
+            frame_path: Path to the frame image file
+            frame_number: Optional frame number
+            timestamp: Optional timestamp in video
+            scene_number: Optional scene number
+
+        Returns:
+            ExtractedFrame with all analysis results
+        """
+        import cv2
+
+        frame_path = Path(frame_path)
+        logger.info(f"Analyzing frame from path: {frame_path}")
+
+        # Load image
+        frame = cv2.imread(str(frame_path))
+        if frame is None:
+            raise VideoProcessingError(
+                message=f"Failed to load frame from {frame_path}",
+                error_code=ErrorCode.FRAME_EXTRACTION_FAILED,
+                file_path=frame_path,
+            )
+
+        # Build frame info
+        frame_info = {
+            "frame_number": frame_number or 0,
+            "timestamp": timestamp or 0.0,
+            "scene_number": scene_number or 0,
+        }
+
+        # Call the main analysis method
+        return self.analyze_single_frame(frame, frame_info)
+
     def get_enabled_analyses(self) -> list[str]:
         """Get list of enabled analysis types."""
         enabled = ["quality_assessment"]  # Always enabled

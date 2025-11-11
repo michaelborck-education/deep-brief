@@ -162,25 +162,23 @@ class AudioExtractor:
             stream = ffmpeg.output(stream, str(output_path), **audio_args)  # type: ignore[reportUnknownMemberType,reportUnknownArgumentType]
             stream = ffmpeg.overwrite_output(stream)  # type: ignore[reportUnknownMemberType,reportUnknownArgumentType]
 
-            # Execute extraction with progress tracking and timeout
+            # Execute extraction with progress tracking
             try:
                 if progress_callback:
                     self._run_with_progress(
                         stream, video_info.duration, progress_callback
                     )
                 else:
-                    # Run with timeout to prevent hanging
+                    # Run without timeout (ffmpeg.run doesn't support timeout parameter)
                     ffmpeg.run(
                         stream,
                         quiet=True,
                         capture_stdout=True,
                         capture_stderr=True,
-                        timeout=video_info.duration * 2
-                        + 60,  # Reasonable timeout based on video duration
                     )  # type: ignore[reportUnknownMemberType,reportUnknownArgumentType]
             except subprocess.TimeoutExpired as e:
                 raise AudioProcessingError(
-                    message=f"Audio extraction timed out after {video_info.duration * 2 + 60:.0f} seconds",
+                    message=f"Audio extraction timed out",
                     file_path=video_info.file_path,
                     cause=e,
                 ) from e

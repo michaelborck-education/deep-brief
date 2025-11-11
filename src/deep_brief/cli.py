@@ -32,6 +32,21 @@ def analyze(
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose output"
     ),
+    api_provider: str | None = typer.Option(
+        None,
+        "--api-provider",
+        help="API provider for captioning (anthropic, openai, google)",
+    ),
+    api_model: str | None = typer.Option(
+        None,
+        "--api-model",
+        help="API model to use (e.g., claude-3-5-sonnet-20241022, gpt-4o)",
+    ),
+    use_api: bool = typer.Option(
+        False,
+        "--use-api",
+        help="Use API for captioning instead of local model",
+    ),
 ) -> None:
     """
     Analyze a video file for presentation feedback.
@@ -40,6 +55,14 @@ def analyze(
     """
     # Load configuration
     config = load_config(config_file) if config_file else get_config()
+
+    # Apply CLI overrides
+    if use_api:
+        config.visual_analysis.captioning_backend = "api"
+    if api_provider:
+        config.visual_analysis.api_provider = api_provider
+    if api_model:
+        config.visual_analysis.api_model = api_model
 
     # Set up logging
     logger = logging.getLogger("deep_brief")
@@ -60,6 +83,13 @@ def analyze(
 
     if video_path:
         # CLI mode - analyze specific video
+        # Show API settings if using API
+        if config.visual_analysis.captioning_backend == "api":
+            console.print(
+                f"[dim]Using API: {config.visual_analysis.api_provider} "
+                f"({config.visual_analysis.api_model})[/dim]"
+            )
+
         _analyze_video_cli(
             video_path=video_path,
             output_dir=output_dir,
@@ -146,9 +176,12 @@ def _analyze_video_cli(
     # Define workflow operations
     operations = [
         ("validate", "Validating video", 0.05),
-        ("audio", "Extracting audio", 0.25),
-        ("scenes", "Detecting scenes", 0.35),
-        ("frames", "Extracting frames", 0.35),
+        ("audio", "Extracting audio", 0.10),
+        ("scenes", "Detecting scenes", 0.10),
+        ("frames", "Extracting frames", 0.10),
+        ("transcribe", "Transcribing speech", 0.30),
+        ("visual", "Analyzing frames", 0.20),
+        ("reports", "Generating reports", 0.15),
     ]
 
     progress_tracker.start_workflow(f"Analyzing {video_path_obj.name}", operations)
@@ -157,7 +190,7 @@ def _analyze_video_cli(
         # Track time
         start_time = time.time()
 
-        # Perform analysis
+        # Phase 1: Video Processing
         progress_tracker.start_operation("validate")
         result = pipeline.analyze_video(
             video_path=video_path_obj,
@@ -171,9 +204,7 @@ def _analyze_video_cli(
         progress_tracker.complete_operation("scenes")
         progress_tracker.complete_operation("frames")
 
-        processing_time = time.time() - start_time
-
-        # Check if analysis was successful
+        # Check if video processing was successful
         if not result.success:
             progress_tracker.fail_workflow(result.error_message or "Unknown error")
             if result.errors:
@@ -181,11 +212,66 @@ def _analyze_video_cli(
                     logger.error(f"Error: {error}")
             sys.exit(1)
 
+        # Phase 2: Speech Analysis
+        speech_analysis = None
+        if result.audio_info:
+            progress_tracker.start_operation("transcribe")
+            try:
+                speech_analysis = pipeline.analyze_speech(
+                    audio_path=result.audio_info.file_path,
+                    scene_result=result.scene_result,
+                )
+                progress_tracker.complete_operation("transcribe")
+                logger.info("Speech analysis completed")
+            except Exception as e:
+                logger.warning(f"Speech analysis failed: {e}")
+                progress_tracker.complete_operation("transcribe")
+        else:
+            progress_tracker.complete_operation("transcribe")
+
+        # Phase 3: Visual Analysis
+        visual_analysis = None
+        if result.frame_infos:
+            progress_tracker.start_operation("visual")
+            try:
+                frame_paths = [frame.frame_path for frame in result.frame_infos]
+                visual_analysis = pipeline.analyze_frames(
+                    frame_paths=frame_paths,
+                    scenes=result.scene_result.scenes if result.scene_result else None,
+                )
+                progress_tracker.complete_operation("visual")
+                logger.info("Visual analysis completed")
+            except Exception as e:
+                logger.warning(f"Visual analysis failed: {e}")
+                progress_tracker.complete_operation("visual")
+        else:
+            progress_tracker.complete_operation("visual")
+
+        # Phase 4: Generate Reports
+        progress_tracker.start_operation("reports")
+        try:
+            report_paths = pipeline.generate_reports(
+                video_info=result.video_info,
+                audio_info=result.audio_info,
+                scene_result=result.scene_result,
+                speech_analysis=speech_analysis,
+                visual_analysis=visual_analysis,
+                output_dir=output_path,
+            )
+            progress_tracker.complete_operation("reports")
+            logger.info("Reports generated successfully")
+        except Exception as e:
+            logger.error(f"Report generation failed: {e}")
+            progress_tracker.complete_operation("reports")
+            report_paths = {}
+
+        processing_time = time.time() - start_time
+
         # Display results
         progress_tracker.complete_workflow()
 
         # Show summary
-        console.print("[bold]Analysis Summary:[/bold]")
+        console.print("\n[bold]Analysis Summary:[/bold]")
         console.print(f"  Video: {video_path_obj.name}")
         console.print(f"  Duration: {result.video_info.duration:.1f}s")
         console.print(f"  Resolution: {result.video_info.width}x{result.video_info.height}")
@@ -200,9 +286,24 @@ def _analyze_video_cli(
             console.print(f"  Scenes detected: {result.scene_result.total_scenes}")
 
         console.print(f"  Frames extracted: {len(result.frame_infos)}")
+
+        if speech_analysis:
+            console.print("  Speech analysis: ✓")
+
+        if visual_analysis:
+            console.print("  Visual analysis: ✓")
+
+        if report_paths:
+            console.print(f"  Reports: JSON + HTML")
+
         console.print(f"  Processing time: {processing_time:.1f}s\n")
 
         console.print(f"[green]✓ Output saved to:[/green] {output_path}")
+        if report_paths.get("html"):
+            console.print(f"[green]✓ HTML report:[/green] {report_paths['html']}")
+        if report_paths.get("json"):
+            console.print(f"[green]✓ JSON report:[/green] {report_paths['json']}")
+
         logger.info(f"Analysis complete. Results saved to {output_path}")
 
     except VideoProcessingError as e:

@@ -126,11 +126,22 @@ class VisualAnalysisConfig(BaseModel):
 
     # Image captioning settings
     enable_captioning: bool = Field(default=True)
+    captioning_backend: str = Field(default="local")  # local, api
+
+    # Local captioning model settings
     captioning_model: str = Field(default="Salesforce/blip2-opt-2.7b")
     captioning_device: str = Field(default="auto")  # auto, cpu, cuda, mps
     max_caption_length: int = Field(default=50, ge=10, le=200)
     caption_temperature: float = Field(default=1.0, ge=0.1, le=2.0)
     caption_batch_size: int = Field(default=1, ge=1, le=8)
+
+    # API captioning settings
+    api_provider: str = Field(default="anthropic")  # anthropic, openai, google
+    api_model: str = Field(default="claude-haiku-4-5")  # Fast and cost-effective
+    api_key_env_var: str = Field(default="ANTHROPIC_API_KEY")
+    api_max_concurrent: int = Field(default=5, ge=1, le=20)
+    api_timeout: float = Field(default=30.0, ge=5.0, le=120.0)
+    api_max_retries: int = Field(default=3, ge=0, le=10)
 
     # OCR settings
     enable_ocr: bool = Field(default=True)
@@ -180,6 +191,24 @@ class VisualAnalysisConfig(BaseModel):
                 f"Using custom captioning model: {v}. Supported models: {valid_models}"
             )
         return v
+
+    @field_validator("captioning_backend")
+    @classmethod
+    def validate_captioning_backend(cls, v: str) -> str:
+        """Validate captioning backend."""
+        valid_backends = {"local", "api"}
+        if v.lower() not in valid_backends:
+            raise ValueError(f"Invalid captioning backend: {v}. Valid options: {valid_backends}")
+        return v.lower()
+
+    @field_validator("api_provider")
+    @classmethod
+    def validate_api_provider(cls, v: str) -> str:
+        """Validate API provider."""
+        valid_providers = {"anthropic", "openai", "google"}
+        if v.lower() not in valid_providers:
+            raise ValueError(f"Invalid API provider: {v}. Valid options: {valid_providers}")
+        return v.lower()
 
     @field_validator("ocr_engine")
     @classmethod

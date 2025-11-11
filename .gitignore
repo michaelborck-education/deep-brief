@@ -189,10 +189,12 @@ samples/
 
 # Generated reports and outputs
 output/
-reports/
+/reports/  # Only ignore reports/ in root, not src/deep_brief/reports/
 *.html
 *.pdf
 !src/deep_brief/reports/templates/*.html  # Keep template files
+!src/deep_brief/**/*.html  # Keep source code HTML files
+!src/deep_brief/**/*.py  # Keep all Python source files
 
 # Cache directories
 .cache/

@@ -5,6 +5,9 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from deep_brief.analysis.frame_analyzer import FrameAnalysisPipeline
+from deep_brief.analysis.speech_analyzer import SpeechAnalyzer
+from deep_brief.analysis.transcriber import WhisperTranscriber
 from deep_brief.core.audio_extractor import AudioExtractor, AudioInfo
 from deep_brief.core.exceptions import (
     AudioProcessingError,
@@ -18,6 +21,8 @@ from deep_brief.core.progress_tracker import (
 )
 from deep_brief.core.scene_detector import SceneDetectionResult, SceneDetector
 from deep_brief.core.video_processor import FrameInfo, VideoInfo, VideoProcessor
+from deep_brief.reports.html_renderer import HTMLRenderer
+from deep_brief.reports.report_generator import ReportGenerator
 from deep_brief.utils.config import get_config
 
 logger = logging.getLogger(__name__)
@@ -491,6 +496,168 @@ class PipelineCoordinator:
                 self.progress_tracker.fail_operation(batch_id, error_msg)
 
             return results  # Return partial results
+
+    def analyze_speech(
+        self,
+        audio_path: Path,
+        scene_result: SceneDetectionResult | None = None,
+        progress_callback: Any = None,
+    ) -> dict[str, Any]:
+        """
+        Perform speech analysis on extracted audio.
+
+        Args:
+            audio_path: Path to extracted audio file
+            scene_result: Optional scene detection result for per-scene analysis
+            progress_callback: Optional progress callback
+
+        Returns:
+            Dictionary containing transcription and speech analysis results
+        """
+        logger.info(f"Starting speech analysis: {audio_path}")
+
+        try:
+            # Step 1: Transcribe audio
+            transcriber = WhisperTranscriber(config=self.config)
+            transcription_result = transcriber.transcribe_from_path(
+                audio_path=audio_path, language=self.config.transcription.language
+            )
+
+            logger.info(
+                f"Transcription complete: {len(transcription_result.segments)} segments"
+            )
+
+            # Step 2: Analyze speech patterns (only if we have scene_result)
+            speech_analysis = None
+            if scene_result:
+                speech_analyzer = SpeechAnalyzer(config=self.config)
+                speech_analysis = speech_analyzer.analyze_speech(
+                    transcription_result=transcription_result,
+                    scene_result=scene_result
+                )
+            else:
+                logger.warning("No scene result provided, skipping speech analysis")
+
+            logger.info("Speech analysis complete")
+
+            return {
+                "transcription": transcription_result,
+                "speech_analysis": speech_analysis,
+            }
+
+        except Exception as e:
+            logger.error(f"Speech analysis failed: {e}")
+            raise
+
+    def analyze_frames(
+        self,
+        frame_paths: list[Path],
+        scenes: list | None = None,
+        progress_callback: Any = None,
+    ) -> dict[str, Any]:
+        """
+        Perform visual analysis on extracted frames.
+
+        Args:
+            frame_paths: List of paths to extracted frame images
+            scenes: Optional list of scene information
+            progress_callback: Optional progress callback
+
+        Returns:
+            Dictionary containing visual analysis results
+        """
+        logger.info(f"Starting visual analysis: {len(frame_paths)} frames")
+
+        try:
+            # Initialize frame analyzer
+            frame_analyzer = FrameAnalysisPipeline(config=self.config)
+
+            # Analyze all frames
+            frame_results = []
+            for i, frame_path in enumerate(frame_paths):
+                logger.debug(f"Analyzing frame {i+1}/{len(frame_paths)}: {frame_path}")
+
+                result = frame_analyzer.analyze_frame_from_path(
+                    frame_path=frame_path, frame_number=i + 1
+                )
+                frame_results.append(result)
+
+                if progress_callback:
+                    progress_callback((i + 1) / len(frame_paths))
+
+            logger.info(f"Visual analysis complete: {len(frame_results)} frames")
+
+            return {"frame_analyses": frame_results}
+
+        except Exception as e:
+            logger.error(f"Visual analysis failed: {e}")
+            raise
+
+    def generate_reports(
+        self,
+        video_info: VideoInfo,
+        audio_info: AudioInfo | None,
+        scene_result: SceneDetectionResult | None,
+        speech_analysis: dict[str, Any] | None,
+        visual_analysis: dict[str, Any] | None,
+        output_dir: Path,
+    ) -> dict[str, Path]:
+        """
+        Generate analysis reports in JSON and HTML formats.
+
+        Args:
+            video_info: Video file information
+            audio_info: Audio extraction information
+            scene_result: Scene detection results
+            speech_analysis: Speech analysis results
+            visual_analysis: Visual analysis results
+            output_dir: Directory to save reports
+
+        Returns:
+            Dictionary mapping format names to report file paths
+        """
+        logger.info(f"Generating reports in {output_dir}")
+
+        try:
+            # Initialize report generator
+            report_generator = ReportGenerator(config=self.config)
+
+            # Build complete analysis data
+            analysis_data = {
+                "video_info": video_info,
+                "audio_info": audio_info,
+                "scenes": scene_result.scenes if scene_result else [],
+                "transcription": speech_analysis.get("transcription")
+                if speech_analysis
+                else None,
+                "speech_metrics": speech_analysis.get("speech_analysis")
+                if speech_analysis
+                else None,
+                "frame_analyses": visual_analysis.get("frame_analyses")
+                if visual_analysis
+                else [],
+            }
+
+            # Generate report
+            report = report_generator.generate_report(analysis_data)
+
+            # Save JSON report
+            json_path = output_dir / "analysis.json"
+            report_generator.save_json(report, json_path)
+            logger.info(f"JSON report saved: {json_path}")
+
+            # Generate and save HTML report
+            html_renderer = HTMLRenderer(config=self.config)
+            html_content = html_renderer.render_report(report)
+            html_path = output_dir / "analysis.html"
+            html_renderer.save_html(html_content, html_path)
+            logger.info(f"HTML report saved: {html_path}")
+
+            return {"json": json_path, "html": html_path}
+
+        except Exception as e:
+            logger.error(f"Report generation failed: {e}")
+            raise
 
 
 def create_pipeline_coordinator(

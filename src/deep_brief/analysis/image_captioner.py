@@ -1,7 +1,8 @@
-"""Image captioning for frame analysis using BLIP-2 and similar models.
+"""Image captioning for frame analysis using BLIP-2 and similar models or APIs.
 
 This module provides image captioning capabilities for extracted frames
-to generate descriptive text about visual content.
+to generate descriptive text about visual content. Supports both local
+models (BLIP-2) and API-based captioning (Claude, GPT-4V, Gemini).
 """
 
 import logging
@@ -46,16 +47,24 @@ class CaptionResult(BaseModel):
 
 
 class ImageCaptioner:
-    """Image captioning using BLIP-2 and similar transformer models."""
+    """Image captioning using local models or API services."""
 
     def __init__(self, config: Any = None):
         """Initialize image captioner with configuration."""
         self.config = config or get_config()
+        self.backend = self.config.visual_analysis.captioning_backend
+
+        # API captioner (lazy initialization)
+        self.api_captioner = None
+
+        # Local model components
         self.model = None
         self.processor = None
         self.device = self._determine_device()
 
-        logger.info(f"ImageCaptioner initialized with device: {self.device}")
+        logger.info(
+            f"ImageCaptioner initialized: backend={self.backend}, device={self.device}"
+        )
 
     def _determine_device(self) -> str:
         """Determine the best device for inference."""
@@ -170,6 +179,16 @@ class ImageCaptioner:
             raise ValueError(
                 "Must provide one of: image_path, image_array, or pil_image"
             )
+
+        # Route to API if configured
+        if self.backend == "api":
+            return self._caption_with_api(
+                image_path=image_path,
+                image_array=image_array,
+                pil_image=pil_image,
+            )
+
+        # Otherwise use local model
 
         if not self.config.visual_analysis.enable_captioning:
             # Return placeholder if captioning is disabled
@@ -451,6 +470,81 @@ class ImageCaptioner:
                 torch.cuda.empty_cache()
 
             logger.info("Image captioning model resources cleaned up")
+
+    def _caption_with_api(
+        self,
+        image_path: Path | None = None,
+        image_array: Any = None,
+        pil_image: Image.Image | None = None,
+    ) -> CaptionResult:
+        """
+        Caption image using API service.
+
+        Args:
+            image_path: Path to image file
+            image_array: Numpy array representation of image
+            pil_image: PIL Image object
+
+        Returns:
+            CaptionResult with generated caption
+        """
+        import time
+
+        start_time = time.time()
+
+        # Lazy initialization of API captioner
+        if self.api_captioner is None:
+            try:
+                from deep_brief.analysis.api_image_captioner import APIImageCaptioner
+
+                self.api_captioner = APIImageCaptioner(config=self.config)
+                logger.info(f"Initialized API captioner: {self.config.visual_analysis.api_provider}")
+            except Exception as e:
+                logger.error(f"Failed to initialize API captioner: {e}")
+                raise VideoProcessingError(
+                    message=f"API captioner initialization failed: {e}",
+                    error_code=ErrorCode.FRAME_EXTRACTION_FAILED,
+                )
+
+        # Prepare image for API
+        if image_path:
+            image_input = image_path
+        elif pil_image:
+            image_input = pil_image
+        elif image_array is not None:
+            # Convert numpy array to PIL Image
+            import numpy as np
+            if isinstance(image_array, np.ndarray):
+                # Convert BGR to RGB if needed
+                if len(image_array.shape) == 3 and image_array.shape[2] == 3:
+                    image_array = image_array[:, :, ::-1]
+                image_input = Image.fromarray(image_array)
+            else:
+                image_input = image_array
+        else:
+            raise ValueError("No valid image input provided")
+
+        # Call API captioner
+        try:
+            api_result = self.api_captioner.caption_image(image_input)
+
+            # Convert to CaptionResult format
+            return CaptionResult(
+                caption=api_result.caption,
+                confidence=api_result.confidence,
+                processing_time=api_result.processing_time,
+                model_used=f"{api_result.provider}:{api_result.model}",
+                tokens_generated=api_result.tokens_used or 0,
+                alternative_captions=[],
+            )
+
+        except Exception as e:
+            logger.error(f"API captioning failed: {e}")
+            raise VideoProcessingError(
+                message=f"API captioning failed: {e}",
+                error_code=ErrorCode.FRAME_EXTRACTION_FAILED,
+                cause=e,
+            )
 
 
 def create_image_captioner(config: Any = None) -> ImageCaptioner:
