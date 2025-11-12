@@ -87,10 +87,9 @@ gpu = [
     # Note: Use the CUDA index URL to get GPU versions
 ]
 api = [
-    # API captioning dependencies (optional - install if using API backend)
-    # Install with: uv pip install -e ".[api]"
-    "anthropic>=0.18.0",  # For Claude API
-    "openai>=1.12.0",  # For GPT-4V API
+    # Additional API captioning dependencies (anthropic is now a core dependency)
+    # Install with: uv pip install -e ".[api]" to enable all API providers
+    "openai>=1.12.0",  # For GPT-4V/ChatGPT API
     "google-generativeai>=0.3.0",  # For Gemini API
 ]
 
