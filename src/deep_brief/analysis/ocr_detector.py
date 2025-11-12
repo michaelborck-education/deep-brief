@@ -11,6 +11,7 @@ from typing import Any, cast
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 from PIL import Image
 from pydantic import BaseModel
 
@@ -172,7 +173,7 @@ class OCRDetector:
     def detect_text(
         self,
         image_path: Path | None = None,
-        image_array: np.ndarray | None = None,
+        image_array: NDArray[Any] | None = None,
         pil_image: Image.Image | None = None,
         preprocess: bool = True,
     ) -> OCRResult:

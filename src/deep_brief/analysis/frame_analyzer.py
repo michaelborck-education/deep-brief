@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 from pydantic import BaseModel
 
 from deep_brief.analysis.visual_analyzer import (
@@ -217,7 +218,7 @@ class FrameAnalysisPipeline:
 
     def analyze_single_frame(
         self,
-        frame: np.ndarray,
+        frame: npt.NDArray[np.uint8],
         frame_info: dict[str, Any] | None = None,
     ) -> ExtractedFrame:
         """
@@ -255,6 +256,8 @@ class FrameAnalysisPipeline:
             )
 
         # Create ExtractedFrame
+        height: int
+        width: int
         height, width = frame.shape[:2]
         extracted_frame = ExtractedFrame(
             frame_number=frame_info.get("frame_number", 0),
@@ -302,7 +305,8 @@ class FrameAnalysisPipeline:
                 error_code=ErrorCode.FRAME_EXTRACTION_FAILED,
                 file_path=frame_path,
             )
-        frame = loaded_frame
+        # cv2.imread returns BGR uint8 image, cast for type checker
+        frame: npt.NDArray[np.uint8] = loaded_frame  # type: ignore[assignment]
 
         # Build frame info
         frame_info = {

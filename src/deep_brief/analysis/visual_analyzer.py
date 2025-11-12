@@ -6,10 +6,11 @@ including blur detection, contrast analysis, and lighting evaluation.
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 from pydantic import BaseModel
 
 from deep_brief.analysis.error_handling import (
@@ -589,20 +590,21 @@ class FrameExtractor:
 
             # Validate and handle corrupt frames
             try:
-                frame = validate_image(frame, f"frame at {timestamp:.1f}s")
-                frame = handle_corrupt_frame(
-                    frame,
+                validated_frame = validate_image(frame, f"frame at {timestamp:.1f}s")
+                processed_frame = handle_corrupt_frame(
+                    validated_frame,
                     {
                         "timestamp": timestamp,
                         "scene_number": scene.scene_number,
                         "frame_number": frame_number,
                     },
                 )
-                if frame is None:
+                if processed_frame is None:
                     logger.warning(
                         f"Corrupt frame detected at {timestamp:.1f}s in scene {scene.scene_number}, skipping"
                     )
                     continue
+                frame = processed_frame
             except Exception as e:
                 logger.error(f"Frame validation failed at {timestamp:.1f}s: {e}")
                 continue
@@ -675,12 +677,14 @@ class FrameExtractor:
                 )
 
                 # Resize frame if needed
+                height: int
+                width: int
                 height, width = frame.shape[:2]
                 max_width = self.config.visual_analysis.max_frame_width
                 max_height = self.config.visual_analysis.max_frame_height
 
                 if width > max_width or height > max_height:
-                    scale = min(max_width / width, max_height / height)
+                    scale: float = min(max_width / width, max_height / height)
                     new_width = int(width * scale)
                     new_height = int(height * scale)
                     frame = cv2.resize(
@@ -692,14 +696,16 @@ class FrameExtractor:
                 cv2.imwrite(str(file_path), frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
 
             # Create ExtractedFrame object
-            height, width = frame.shape[:2]
+            final_height: int
+            final_width: int
+            final_height, final_width = frame.shape[:2]
             extracted_frame = ExtractedFrame(
                 frame_number=frame_number,
                 timestamp=timestamp,
                 scene_number=scene.scene_number,
                 file_path=file_path,
-                width=width,
-                height=height,
+                width=final_width,
+                height=final_height,
                 quality_metrics=quality_metrics,
                 caption_result=caption_result,
                 ocr_result=ocr_result,
@@ -754,10 +760,10 @@ class FrameExtractor:
             extraction_success_rate=extraction_success_rate,
         )
 
-    def _assess_frame_quality(self, frame: np.ndarray) -> FrameQualityMetrics:
+    def _assess_frame_quality(self, frame: NDArray[np.uint8]) -> FrameQualityMetrics:
         """Assess the quality of a single frame."""
         # Convert to grayscale for analysis
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cast(NDArray[np.uint8], cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
 
         # 1. Blur Assessment (Laplacian variance)
         blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
@@ -873,7 +879,7 @@ class FrameExtractor:
         else:
             return "poor"
 
-    def _analyze_histogram(self, gray: np.ndarray) -> dict[str, Any]:
+    def _analyze_histogram(self, gray: NDArray[np.uint8]) -> dict[str, Any]:
         """Analyze histogram properties for additional quality metrics."""
         hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
         hist = hist.flatten()
@@ -916,13 +922,12 @@ class FrameExtractor:
             "std_intensity": float(gray.std()),
         }
 
-    def _analyze_sharpness(self, gray: np.ndarray) -> dict[str, Any]:
+    def _analyze_sharpness(self, gray: NDArray[np.uint8]) -> dict[str, Any]:
         """Analyze sharpness using multiple edge detection methods."""
         # Sobel edge detection
-        sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
-        sobel_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
-        # Type checker doesn't fully infer numpy dtype from cv2.Sobel output
-        sobel_magnitude: np.ndarray = np.sqrt(
+        sobel_x = cast(NDArray[np.float64], cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3))
+        sobel_y = cast(NDArray[np.float64], cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3))
+        sobel_magnitude: NDArray[np.float64] = np.sqrt(
             sobel_x**2 + sobel_y**2  # type: ignore[arg-type]
         )
         sobel_mean = sobel_magnitude.mean()
@@ -984,7 +989,7 @@ class FrameExtractor:
         else:
             return "poor"
 
-    def _analyze_color_metrics(self, frame: np.ndarray) -> dict[str, Any]:
+    def _analyze_color_metrics(self, frame: NDArray[np.uint8]) -> dict[str, Any]:
         """Analyze color distribution and saturation metrics."""
         # Convert to HSV for saturation analysis
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -1040,12 +1045,12 @@ class FrameExtractor:
         else:
             return "neutral"
 
-    def _analyze_noise_metrics(self, gray: np.ndarray) -> dict[str, Any]:
+    def _analyze_noise_metrics(self, gray: NDArray[np.uint8]) -> dict[str, Any]:
         """Estimate noise levels in the image."""
         # Method 1: High-pass filter approach
         kernel = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float32)
-        laplacian = cv2.filter2D(gray, cv2.CV_32F, kernel)
-        noise_std = np.std(laplacian)
+        laplacian = cast(NDArray[np.float32], cv2.filter2D(gray, cv2.CV_32F, kernel))
+        noise_std: float = float(np.std(laplacian))
 
         # Method 2: Difference from Gaussian blur
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -1053,14 +1058,14 @@ class FrameExtractor:
         noise_estimate = np.std(diff)
 
         # Signal-to-noise ratio estimation
-        signal_mean = np.mean(gray)
-        snr = signal_mean / noise_std if noise_std > 0 else float("inf")
+        signal_mean = float(np.mean(gray))
+        snr: float = signal_mean / noise_std if noise_std > 0 else float("inf")
 
         noise_metrics = {
-            "noise_std_laplacian": float(noise_std),
+            "noise_std_laplacian": noise_std,
             "noise_estimate_gaussian": float(noise_estimate),
-            "signal_to_noise_ratio": float(snr) if snr != float("inf") else 1000.0,
-            "noise_level": self._categorize_noise_level(float(noise_std)),
+            "signal_to_noise_ratio": snr if snr != float("inf") else 1000.0,
+            "noise_level": self._categorize_noise_level(noise_std),
         }
 
         return noise_metrics
@@ -1078,10 +1083,12 @@ class FrameExtractor:
         else:
             return "very_high"
 
-    def _analyze_composition_metrics(self, frame: np.ndarray) -> dict[str, Any]:
+    def _analyze_composition_metrics(self, frame: NDArray[np.uint8]) -> dict[str, Any]:
         """Analyze frame composition including rule of thirds and symmetry."""
+        height: int
+        width: int
         height, width = frame.shape[:2]
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cast(NDArray[np.uint8], cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
 
         # Rule of thirds analysis
         thirds_x = [width // 3, 2 * width // 3]
@@ -1094,16 +1101,18 @@ class FrameExtractor:
         # Vertical lines
         for x in thirds_x:
             region = gray[:, max(0, x - line_width) : min(width, x + line_width)]
-            thirds_regions.append(
-                float(np.mean(cv2.Sobel(region, cv2.CV_64F, 1, 0, ksize=3)))
+            sobel_result = cast(
+                NDArray[np.float64], cv2.Sobel(region, cv2.CV_64F, 1, 0, ksize=3)
             )
+            thirds_regions.append(float(np.mean(sobel_result)))
 
         # Horizontal lines
         for y in thirds_y:
             region = gray[max(0, y - line_width) : min(height, y + line_width), :]
-            thirds_regions.append(
-                float(np.mean(cv2.Sobel(region, cv2.CV_64F, 0, 1, ksize=3)))
+            sobel_result = cast(
+                NDArray[np.float64], cv2.Sobel(region, cv2.CV_64F, 0, 1, ksize=3)
             )
+            thirds_regions.append(float(np.mean(sobel_result)))
 
         # Symmetry analysis
         # Vertical symmetry
@@ -1128,17 +1137,18 @@ class FrameExtractor:
 
         # Focus point detection (simplified)
         # Find the region with highest gradient magnitude
-        grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
-        grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
-        # Type checker doesn't fully infer numpy dtype from cv2.Sobel output
-        grad_mag: np.ndarray = np.sqrt(grad_x**2 + grad_y**2)  # type: ignore[arg-type]
+        grad_x = cast(NDArray[np.float64], cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3))
+        grad_y = cast(NDArray[np.float64], cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3))
+        grad_mag: NDArray[np.float64] = np.sqrt(grad_x**2 + grad_y**2)  # type: ignore[arg-type]
 
         # Find center of mass of high gradient regions
         threshold = np.percentile(grad_mag, 90)
         y_coords, x_coords = np.where(grad_mag > threshold)
+        focus_x: float
+        focus_y: float
         if len(x_coords) > 0:
-            focus_x = np.mean(x_coords) / width
-            focus_y = np.mean(y_coords) / height
+            focus_x = float(np.mean(x_coords)) / width
+            focus_y = float(np.mean(y_coords)) / height
         else:
             focus_x, focus_y = 0.5, 0.5
 
@@ -1167,13 +1177,17 @@ class FrameExtractor:
 
         return composition_metrics
 
-    def _assess_visual_balance(self, gray: np.ndarray) -> dict[str, float]:
+    def _assess_visual_balance(self, gray: NDArray[np.uint8]) -> dict[str, float]:
         """Assess visual balance of the image."""
+        height: int
+        width: int
         height, width = gray.shape
 
         # Divide into quadrants
+        mid_x: int
+        mid_y: int
         mid_x, mid_y = width // 2, height // 2
-        quadrants = [
+        quadrants: list[NDArray[np.uint8]] = [
             gray[:mid_y, :mid_x],  # Top-left
             gray[:mid_y, mid_x:],  # Top-right
             gray[mid_y:, :mid_x],  # Bottom-left
@@ -1306,7 +1320,7 @@ class FrameExtractor:
             },
         }
 
-    def _caption_frame(self, frame: np.ndarray) -> CaptionResult | None:
+    def _caption_frame(self, frame: NDArray[np.uint8]) -> CaptionResult | None:
         """Generate caption for a frame using image captioning model."""
         if not self.config.visual_analysis.enable_captioning:
             return None
@@ -1336,7 +1350,7 @@ class FrameExtractor:
                 alternative_captions=[],
             )
 
-    def _extract_text_from_frame(self, frame: np.ndarray) -> OCRResult | None:
+    def _extract_text_from_frame(self, frame: NDArray[np.uint8]) -> OCRResult | None:
         """Extract text from a frame using OCR."""
         if not self.config.visual_analysis.enable_ocr:
             return None
@@ -1369,7 +1383,7 @@ class FrameExtractor:
             )
 
     def _detect_objects_in_frame(
-        self, frame: np.ndarray
+        self, frame: NDArray[np.uint8]
     ) -> ObjectDetectionResult | None:
         """Detect presentation elements in a frame using object detection."""
         if not self.config.visual_analysis.enable_object_detection:

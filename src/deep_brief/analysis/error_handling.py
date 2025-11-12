@@ -372,9 +372,9 @@ class ErrorRecoveryContext:
 
 
 def handle_corrupt_frame(
-    frame: np.ndarray,
+    frame: NDArray[Any],
     frame_info: dict[str, Any] | None = None,
-) -> np.ndarray | None:
+) -> NDArray[np.uint8] | None:
     """
     Handle potentially corrupt frame data.
 
@@ -411,7 +411,7 @@ def handle_corrupt_frame(
                     validated_frame, None, 10, 10, 7, 21
                 )
                 logger.info("Applied denoising to corrupted frame")
-                return denoised
+                return cast("NDArray[np.uint8]", denoised)
             except Exception as e:
                 logger.error(f"Denoising failed: {e}")
                 return None

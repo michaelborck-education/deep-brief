@@ -13,6 +13,7 @@ from typing import Any
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 from PIL import Image
 from pydantic import BaseModel
 
@@ -193,7 +194,7 @@ class ObjectDetector:
 
     def detect_objects(
         self,
-        image: Image.Image | np.ndarray | None = None,
+        image: Image.Image | NDArray[Any] | None = None,
         image_path: Path | None = None,
     ) -> ObjectDetectionResult:
         """
@@ -213,6 +214,7 @@ class ObjectDetector:
 
         try:
             # Load and validate image
+            image_array: NDArray[Any]
             if image_path:
                 image_array = validate_image(image_path, f"image file {image_path}")
             elif image is not None:
@@ -225,10 +227,10 @@ class ObjectDetector:
                 raise ValueError("Either image or image_path must be provided")
 
             # Handle corrupt frames
-            image_array = handle_corrupt_frame(
+            maybe_corrupt_frame = handle_corrupt_frame(
                 image_array, {"source": "object_detection"}
             )
-            if image_array is None:
+            if maybe_corrupt_frame is None:
                 logger.warning("Frame appears to be corrupted, returning empty results")
                 return ObjectDetectionResult(
                     detected_objects=[],
@@ -244,7 +246,11 @@ class ObjectDetector:
                     dominant_element=None,
                 )
 
-            height, width = image_array.shape[:2]
+            # Re-assign validated frame
+            image_array = maybe_corrupt_frame
+
+            height: int = image_array.shape[0]
+            width: int = image_array.shape[1]
 
             # For now, use heuristic-based detection
             # This will be replaced with proper ML model
@@ -317,7 +323,7 @@ class ObjectDetector:
                 dominant_element=None,
             )
 
-    def _detect_with_heuristics(self, image: np.ndarray) -> list[DetectedObject]:
+    def _detect_with_heuristics(self, image: NDArray[Any]) -> list[DetectedObject]:
         """
         Detect objects using heuristic methods.
 
@@ -325,21 +331,22 @@ class ObjectDetector:
         In production, this would be replaced with a proper ML model.
         """
         detected_objects: list[DetectedObject] = []
-        height, width = image.shape[:2]
+        height: int = image.shape[0]
+        width: int = image.shape[1]
 
         # Convert to grayscale for analysis
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        gray: NDArray[Any] = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 
         # 1. Detect text blocks using morphological operations
         text_blocks = self._detect_text_blocks(gray)
         for bbox in text_blocks:
             x1, y1, x2, y2 = bbox
-            center_x = (x1 + x2) / 2 / width
-            center_y = (y1 + y2) / 2 / height
-            area_ratio = ((x2 - x1) * (y2 - y1)) / (width * height)
+            center_x: float = (x1 + x2) / 2 / width
+            center_y: float = (y1 + y2) / 2 / height
+            area_ratio: float = ((x2 - x1) * (y2 - y1)) / (width * height)
 
             # Determine if it's a title based on position and size
-            is_title = y1 < height * 0.2 and area_ratio > 0.1
+            is_title: bool = y1 < height * 0.2 and area_ratio > 0.1
 
             detected_objects.append(
                 DetectedObject(
@@ -358,17 +365,17 @@ class ObjectDetector:
         charts = self._detect_charts(image)
         for bbox in charts:
             x1, y1, x2, y2 = bbox
-            center_x = (x1 + x2) / 2 / width
-            center_y = (y1 + y2) / 2 / height
-            area_ratio = ((x2 - x1) * (y2 - y1)) / (width * height)
+            center_x_chart: float = (x1 + x2) / 2 / width
+            center_y_chart: float = (y1 + y2) / 2 / height
+            area_ratio_chart: float = ((x2 - x1) * (y2 - y1)) / (width * height)
 
             detected_objects.append(
                 DetectedObject(
                     element_type=PresentationElement.CHART,
                     confidence=0.7,
                     bbox=bbox,
-                    center=(center_x, center_y),
-                    area_ratio=area_ratio,
+                    center=(center_x_chart, center_y_chart),
+                    area_ratio=area_ratio_chart,
                     attributes={"chart_type": "unknown"},
                 )
             )
@@ -396,31 +403,31 @@ class ObjectDetector:
         code_blocks = self._detect_code_blocks(gray)
         for bbox in code_blocks:
             x1, y1, x2, y2 = bbox
-            center_x = (x1 + x2) / 2 / width
-            center_y = (y1 + y2) / 2 / height
-            area_ratio = ((x2 - x1) * (y2 - y1)) / (width * height)
+            center_x_code: float = (x1 + x2) / 2 / width
+            center_y_code: float = (y1 + y2) / 2 / height
+            area_ratio_code: float = ((x2 - x1) * (y2 - y1)) / (width * height)
 
             detected_objects.append(
                 DetectedObject(
                     element_type=PresentationElement.CODE_BLOCK,
                     confidence=0.8,
                     bbox=bbox,
-                    center=(center_x, center_y),
-                    area_ratio=area_ratio,
+                    center=(center_x_code, center_y_code),
+                    area_ratio=area_ratio_code,
                     attributes={"has_syntax_highlighting": False},
                 )
             )
 
         return detected_objects
 
-    def _detect_text_blocks(self, gray: np.ndarray) -> list[tuple[int, int, int, int]]:
+    def _detect_text_blocks(self, gray: NDArray[Any]) -> list[tuple[int, int, int, int]]:
         """Detect text blocks using morphological operations."""
         # Apply threshold to get binary image
         _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
         # Apply morphological operations to merge text regions
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 5))
-        dilated = cv2.dilate(binary, kernel, iterations=1)
+        kernel: NDArray[Any] = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 5))
+        dilated: NDArray[Any] = cv2.dilate(binary, kernel, iterations=1)
 
         # Find contours
         contours, _ = cv2.findContours(
@@ -428,8 +435,9 @@ class ObjectDetector:
         )
 
         text_blocks: list[tuple[int, int, int, int]] = []
-        height, width = gray.shape
-        min_area = width * height * 0.01  # Minimum 1% of frame area
+        height: int = gray.shape[0]
+        width: int = gray.shape[1]
+        min_area: float = width * height * 0.01  # Minimum 1% of frame area
 
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
@@ -441,14 +449,14 @@ class ObjectDetector:
 
         return text_blocks
 
-    def _detect_charts(self, image: np.ndarray) -> list[tuple[int, int, int, int]]:
+    def _detect_charts(self, image: NDArray[Any]) -> list[tuple[int, int, int, int]]:
         """Detect charts and graphs using edge detection and line detection."""
-        gray = (
+        gray: NDArray[Any] = (
             cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if len(image.shape) == 3 else image
         )
 
         # Edge detection
-        edges = cv2.Canny(gray, 50, 150)
+        edges: NDArray[Any] = cv2.Canny(gray, 50, 150)
 
         # Line detection
         lines = cv2.HoughLinesP(
@@ -463,7 +471,8 @@ class ObjectDetector:
 
         # Group lines into potential chart regions
         # This is a simplified approach - in practice, would use more sophisticated methods
-        height, width = gray.shape
+        height: int = gray.shape[0]
+        width: int = gray.shape[1]
 
         # Look for rectangular regions with many lines
         # (This is a placeholder - real implementation would be more complex)
@@ -479,25 +488,26 @@ class ObjectDetector:
 
         return charts
 
-    def _detect_code_blocks(self, gray: np.ndarray) -> list[tuple[int, int, int, int]]:
+    def _detect_code_blocks(self, gray: NDArray[Any]) -> list[tuple[int, int, int, int]]:
         """Detect code blocks (areas with monospace text patterns)."""
         # Look for regions with consistent horizontal lines (code indentation)
         # This is a simplified heuristic
 
         # Apply edge detection to find text regions
-        edges = cv2.Canny(gray, 50, 150)
+        edges: NDArray[Any] = cv2.Canny(gray, 50, 150)
 
         # Look for rectangular regions with regular patterns
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 3))
-        dilated = cv2.dilate(edges, kernel, iterations=1)
+        kernel: NDArray[Any] = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 3))
+        dilated: NDArray[Any] = cv2.dilate(edges, kernel, iterations=1)
 
         contours, _ = cv2.findContours(
             dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
 
         code_blocks: list[tuple[int, int, int, int]] = []
-        height, width = gray.shape
-        min_area = width * height * 0.05  # Minimum 5% of frame area
+        height: int = gray.shape[0]
+        width: int = gray.shape[1]
+        min_area: float = width * height * 0.05  # Minimum 5% of frame area
 
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
@@ -509,29 +519,30 @@ class ObjectDetector:
 
         return code_blocks
 
-    def _is_slide_layout(self, image: np.ndarray) -> bool:
+    def _is_slide_layout(self, image: NDArray[Any]) -> bool:
         """Determine if the image has a typical slide layout."""
-        height, width = image.shape[:2]
+        height: int = image.shape[0]
+        width: int = image.shape[1]
 
         # Convert to grayscale
-        gray = (
+        gray: NDArray[Any] = (
             cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if len(image.shape) == 3 else image
         )
 
         # Check for consistent background (slides usually have uniform backgrounds)
         # Calculate standard deviation of pixel values
-        std_dev = np.std(gray)
+        std_dev: float = float(np.std(gray))
 
         # Check edges - slides usually have clear borders
-        edges = cv2.Canny(gray, 50, 150)
-        edge_density = np.sum(edges > 0) / edges.size
+        edges: NDArray[Any] = cv2.Canny(gray, 50, 150)
+        edge_density: float = float(np.sum(edges > 0)) / float(edges.size)
 
         # Slides typically have:
         # - Low overall standard deviation (uniform background)
         # - Low edge density (not too busy)
         # - Rectangular aspect ratio close to 16:9 or 4:3
-        aspect_ratio = width / height
-        is_standard_aspect = (
+        aspect_ratio: float = width / height
+        is_standard_aspect: bool = (
             abs(aspect_ratio - 16 / 9) < 0.2 or abs(aspect_ratio - 4 / 3) < 0.2
         )
 
