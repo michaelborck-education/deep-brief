@@ -606,6 +606,243 @@ def _rubric_delete(repo: "RubricRepository", rubric_id: str) -> None:
     console.print(f"\n[green]✓[/green] Deleted rubric: {rubric_id}\n")
 
 
+@app.command()
+def grade(
+    analysis_file: Path | None = typer.Argument(
+        None, help="Path to analysis JSON file"
+    ),
+    video_path: Path | None = typer.Option(
+        None, "--video", "-v", help="Path to video file (if no analysis file)"
+    ),
+    rubric_file: Path = typer.Option(
+        ..., "--rubric", "-r", help="Path to rubric JSON file"
+    ),
+    output_dir: Path | None = typer.Option(
+        None, "--output", "-o", help="Output directory for feedback report"
+    ),
+    api_provider: str | None = typer.Option(
+        None, "--api-provider", help="API provider (anthropic, openai, google)"
+    ),
+    api_model: str | None = typer.Option(None, "--api-model", help="API model to use"),
+) -> None:
+    """Grade a video using LLM-based feedback.
+
+    Takes an analysis file (JSON) or video path, and a rubric file,
+    then generates detailed feedback using an LLM.
+
+    Either provide analysis_file OR video_path (video will be analyzed first).
+
+    Example:
+        deep-brief grade analysis.json --rubric rubric.json
+        deep-brief grade --video video.mp4 --rubric rubric.json --output reports/
+    """
+    import json
+
+    from deep_brief.analysis.rubric_system import Rubric
+
+    # Validate inputs
+    if not analysis_file and not video_path:
+        console.print("[red]✗ Either analysis_file or --video must be provided[/red]")
+        raise typer.Exit(1)
+
+    if not rubric_file.exists():
+        console.print(f"[red]✗ Rubric file not found: {rubric_file}[/red]")
+        raise typer.Exit(1)
+
+    # Load rubric
+    try:
+        with open(rubric_file) as f:
+            rubric_data = json.load(f)
+        rubric = Rubric.from_dict(rubric_data)
+        console.print(f"[cyan]→[/cyan] Loaded rubric: [bold]{rubric.name}[/bold]")
+    except Exception as e:
+        console.print(f"[red]✗ Failed to load rubric: {str(e)}[/red]")
+        raise typer.Exit(1) from e
+
+    # Get analysis data
+    analysis_data = None
+    if analysis_file:
+        if not analysis_file.exists():
+            console.print(f"[red]✗ Analysis file not found: {analysis_file}[/red]")
+            raise typer.Exit(1)
+        try:
+            with open(analysis_file) as f:
+                analysis_data = json.load(f)
+            console.print(f"[cyan]→[/cyan] Loaded analysis from: {analysis_file.name}")
+        except Exception as e:
+            console.print(f"[red]✗ Failed to load analysis file: {str(e)}[/red]")
+            raise typer.Exit(1) from e
+    elif video_path:
+        if not video_path.exists():
+            console.print(f"[red]✗ Video file not found: {video_path}[/red]")
+            raise typer.Exit(1)
+        console.print(f"[cyan]→[/cyan] Analyzing video: [bold]{video_path.name}[/bold]")
+        try:
+            from deep_brief.core.pipeline_coordinator import (
+                PipelineCoordinator,
+            )
+
+            coordinator = PipelineCoordinator(get_config())
+            analysis_result = coordinator.analyze_video(str(video_path))
+
+            if not analysis_result.success:
+                console.print(
+                    f"[red]✗ Analysis failed: {analysis_result.error_message}[/red]"
+                )
+                raise typer.Exit(1)
+
+            console.print("[green]✓[/green] Video analysis complete")
+            # Store basic analysis data for LLM
+            analysis_data = {
+                "video_info": analysis_result.video_info.to_dict()
+                if hasattr(analysis_result.video_info, "to_dict")
+                else {},
+                "processing_time": analysis_result.processing_time,
+            }
+        except Exception as e:
+            console.print(f"[red]✗ Analysis error: {str(e)}[/red]")
+            raise typer.Exit(1) from e
+
+    # Set output directory
+    if output_dir is None:
+        if analysis_file:
+            output_dir = analysis_file.parent / "feedback"
+        else:
+            output_dir = video_path.parent / "feedback"  # type: ignore[union-attr]
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate feedback using LLM
+    console.print("\n[cyan]→[/cyan] Generating feedback using LLM...")
+    try:
+        from deep_brief.utils.api_keys import get_api_key
+
+        # Determine API provider
+        if not api_provider:
+            # Try to auto-detect from config
+            config = get_config()
+            api_provider = getattr(config.api_settings, "default_provider", "anthropic")
+
+        api_key = get_api_key(api_provider)
+        if not api_key:
+            console.print(
+                f"[red]✗ No API key found for {api_provider}[/red]\n"
+                f"[dim]Set {api_provider.upper()}_API_KEY environment variable[/dim]"
+            )
+            raise typer.Exit(1)
+
+        # Build prompt for LLM
+        prompt = _build_grading_prompt(rubric, analysis_data)
+
+        # Call appropriate LLM
+        feedback_text = None
+        if api_provider.lower() == "anthropic":
+            from anthropic import Anthropic
+
+            client = Anthropic(api_key=api_key)
+            response = client.messages.create(
+                model=api_model or "claude-3-5-sonnet-20241022",
+                max_tokens=4096,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            feedback_text = response.content[0].text
+
+        elif api_provider.lower() == "openai":
+            from openai import OpenAI
+
+            client = OpenAI(api_key=api_key)
+            response = client.chat.completions.create(
+                model=api_model or "gpt-4o",
+                max_tokens=4096,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            feedback_text = response.choices[0].message.content
+
+        elif api_provider.lower() == "google":
+            import google.generativeai as genai
+
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(api_model or "gemini-2.0-flash")
+            response = model.generate_content(prompt)
+            feedback_text = response.text
+
+        if not feedback_text:
+            console.print("[red]✗ Failed to generate feedback[/red]")
+            raise typer.Exit(1)
+
+        console.print("[green]✓[/green] Feedback generated")
+
+    except Exception as e:
+        console.print(f"[red]✗ LLM error: {str(e)}[/red]")
+        raise typer.Exit(1) from e
+
+    # Save feedback report
+    try:
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        output_file = output_dir / f"feedback_{timestamp}.md"
+
+        with open(output_file, "w") as f:
+            f.write("# Presentation Feedback Report\n\n")
+            f.write(f"**Rubric:** {rubric.name}\n")
+            f.write(f"**Generated:** {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            f.write("## Feedback\n\n")
+            f.write(feedback_text)
+
+        console.print("[green]✓[/green] Feedback saved to:")
+        console.print(f"  [bold]{output_file}[/bold]")
+
+    except Exception as e:
+        console.print(f"[red]✗ Failed to save feedback: {str(e)}[/red]")
+        raise typer.Exit(1) from e
+
+
+def _build_grading_prompt(rubric, analysis_data):
+    """Build the prompt for LLM grading."""
+    import json
+
+    prompt = f"""You are an expert presentation evaluator. Please evaluate the following presentation based on the provided rubric.
+
+## Rubric: {rubric.name}
+{rubric.description or ""}
+
+### Rubric Categories and Criteria:
+"""
+
+    for category in rubric.categories:
+        prompt += f"\n**{category.name}** (weight: {category.weight})\n"
+        prompt += f"{category.description or ''}\n\n"
+        for criterion in category.criteria:
+            prompt += f"- {criterion.name}: {criterion.description or ''}\n"
+            if criterion.scoring_guide:
+                prompt += f"  Scoring guide: {criterion.scoring_guide}\n"
+
+    prompt += """
+
+### Scoring Scale:
+"""
+    for score, label in sorted(rubric.scoring_scale.labels.items()):
+        prompt += f"- {score}: {label}\n"
+
+    prompt += f"""
+
+### Presentation Analysis Data:
+```json
+{json.dumps(analysis_data, indent=2, default=str)}
+```
+
+Please provide:
+1. An overall assessment
+2. Scores for each criterion (1-{rubric.scoring_scale.max_score})
+3. Specific feedback for each category
+4. Key strengths
+5. Areas for improvement
+6. Recommendations for next time
+
+Format the response clearly with sections for each category."""
+
+    return prompt
+
+
 def main() -> None:
     """Entry point for the CLI."""
     app()
