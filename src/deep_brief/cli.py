@@ -614,8 +614,14 @@ def grade(
     video_path: Path | None = typer.Option(
         None, "--video", "-v", help="Path to video file (if no analysis file)"
     ),
-    rubric_file: Path = typer.Option(
-        ..., "--rubric", "-r", help="Path to rubric JSON file"
+    rubric_type: str | None = typer.Option(
+        None,
+        "--rubric-type",
+        "-t",
+        help="Default rubric type (academic, business, teaching, general)",
+    ),
+    rubric_file: Path | None = typer.Option(
+        None, "--rubric-file", "-r", help="Path to custom rubric JSON file"
     ),
     output_dir: Path | None = typer.Option(
         None, "--output", "-o", help="Output directory for feedback report"
@@ -627,17 +633,20 @@ def grade(
 ) -> None:
     """Grade a video using LLM-based feedback.
 
-    Takes an analysis file (JSON) or video path, and a rubric file,
+    Takes an analysis file (JSON) or video path, plus a rubric (default or custom),
     then generates detailed feedback using an LLM.
 
     Either provide analysis_file OR video_path (video will be analyzed first).
+    Either specify --rubric-type (for defaults) OR --rubric-file (for custom).
 
     Example:
-        deep-brief grade analysis.json --rubric rubric.json
-        deep-brief grade --video video.mp4 --rubric rubric.json --output reports/
+        deep-brief grade analysis.json --rubric-type academic
+        deep-brief grade --video video.mp4 --rubric-type business --output reports/
+        deep-brief grade analysis.json --rubric-file my-rubric.json
     """
     import json
 
+    from deep_brief.analysis.default_rubrics import get_default_rubric
     from deep_brief.analysis.rubric_system import Rubric
 
     # Validate inputs
@@ -645,16 +654,39 @@ def grade(
         console.print("[red]✗ Either analysis_file or --video must be provided[/red]")
         raise typer.Exit(1)
 
-    if not rubric_file.exists():
-        console.print(f"[red]✗ Rubric file not found: {rubric_file}[/red]")
+    if not rubric_type and not rubric_file:
+        console.print(
+            "[red]✗ Either --rubric-type or --rubric-file must be provided[/red]"
+        )
+        raise typer.Exit(1)
+
+    if rubric_type and rubric_file:
+        console.print(
+            "[red]✗ Cannot specify both --rubric-type and --rubric-file[/red]"
+        )
         raise typer.Exit(1)
 
     # Load rubric
     try:
-        with open(rubric_file) as f:
-            rubric_data = json.load(f)
-        rubric = Rubric.from_dict(rubric_data)
-        console.print(f"[cyan]→[/cyan] Loaded rubric: [bold]{rubric.name}[/bold]")
+        if rubric_type:
+            rubric = get_default_rubric(rubric_type)
+            if not rubric:
+                console.print(
+                    f"[red]✗ Unknown rubric type: {rubric_type}[/red]\n"
+                    f"[dim]Available: academic, business, teaching, general[/dim]"
+                )
+                raise typer.Exit(1)
+            console.print(
+                f"[cyan]→[/cyan] Using default rubric: [bold]{rubric.name}[/bold]"
+            )
+        else:
+            if not rubric_file or not rubric_file.exists():
+                console.print(f"[red]✗ Rubric file not found: {rubric_file}[/red]")
+                raise typer.Exit(1)
+            with open(rubric_file) as f:
+                rubric_data = json.load(f)
+            rubric = Rubric.from_dict(rubric_data)
+            console.print(f"[cyan]→[/cyan] Loaded rubric: [bold]{rubric.name}[/bold]")
     except Exception as e:
         console.print(f"[red]✗ Failed to load rubric: {str(e)}[/red]")
         raise typer.Exit(1) from e
