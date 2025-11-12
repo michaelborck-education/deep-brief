@@ -843,7 +843,9 @@ class SpeechAnalyzer:
 
         if silence_segments:
             average_silence_duration = total_silence_time / silence_count
-            longest_silence_duration = max(float(seg["duration"]) for seg in silence_segments)
+            longest_silence_duration = max(
+                float(seg["duration"]) for seg in silence_segments
+            )
         else:
             average_silence_duration = 0.0
             longest_silence_duration = 0.0

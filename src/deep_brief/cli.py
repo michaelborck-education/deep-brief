@@ -4,7 +4,7 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import typer
 from rich.console import Console
@@ -14,6 +14,9 @@ from deep_brief.core.exceptions import VideoProcessingError
 from deep_brief.core.pipeline_coordinator import PipelineCoordinator
 from deep_brief.utils.config import DeepBriefConfig, get_config, load_config
 from deep_brief.utils.progress_display import CLIProgressTracker
+
+if TYPE_CHECKING:
+    from deep_brief.analysis.rubric_system import RubricRepository
 
 console = Console()
 app = typer.Typer(help="DeepBrief - Video Analysis Application")
@@ -394,6 +397,213 @@ def config(
         console.print(f"File: {config_obj.logging.file_path}")
     else:
         console.print("\n[dim]Use --all to see all configuration options[/dim]")
+
+
+@app.command()
+def rubric(
+    action: str = typer.Argument(
+        ..., help="Action: list, show, create, export, delete"
+    ),
+    rubric_type: str | None = typer.Option(
+        None,
+        "--type",
+        "-t",
+        help="Rubric type (academic, business, teaching, general)",
+    ),
+    rubric_id: str | None = typer.Option(
+        None, "--id", "-i", help="Rubric ID (for show/delete actions)"
+    ),
+    output: Path | None = typer.Option(
+        None, "--output", "-o", help="Output file path (for export action)"
+    ),
+    rubrics_dir: Path | None = typer.Option(
+        Path("rubrics"), "--dir", "-d", help="Directory for storing rubrics"
+    ),
+) -> None:
+    """Manage rubrics for assessment.
+
+    Actions:
+        list    - List all available rubrics (default and custom)
+        show    - Show details of a specific rubric
+        create  - Create a new rubric from a default template
+        export  - Export a rubric to JSON file
+        delete  - Delete a custom rubric
+    """
+    from deep_brief.analysis.default_rubrics import list_default_rubrics
+    from deep_brief.analysis.rubric_system import RubricRepository
+
+    try:
+        repo = RubricRepository(rubrics_dir)
+
+        if action.lower() == "list":
+            _rubric_list(repo)
+
+        elif action.lower() == "show":
+            if not rubric_id:
+                console.print("[red]Error: --id required for show action[/red]")
+                raise typer.Exit(1)
+            _rubric_show(repo, rubric_id)
+
+        elif action.lower() == "create":
+            if not rubric_type:
+                console.print("[red]Error: --type required for create action[/red]")
+                console.print(
+                    f"[dim]Available types: {', '.join(list_default_rubrics())}[/dim]"
+                )
+                raise typer.Exit(1)
+            _rubric_create(repo, rubric_type)
+
+        elif action.lower() == "export":
+            if not rubric_id or not output:
+                console.print(
+                    "[red]Error: --id and --output required for export action[/red]"
+                )
+                raise typer.Exit(1)
+            _rubric_export(repo, rubric_id, output)
+
+        elif action.lower() == "delete":
+            if not rubric_id:
+                console.print("[red]Error: --id required for delete action[/red]")
+                raise typer.Exit(1)
+            _rubric_delete(repo, rubric_id)
+
+        else:
+            console.print(f"[red]Unknown action: {action}[/red]")
+            console.print(
+                "[dim]Available actions: list, show, create, export, delete[/dim]"
+            )
+            raise typer.Exit(1)
+
+    except Exception as e:
+        console.print(f"[red]Error: {str(e)}[/red]")
+        raise typer.Exit(1) from e
+
+
+def _rubric_list(repo: "RubricRepository") -> None:
+    """List all rubrics."""
+    from deep_brief.analysis.default_rubrics import (
+        get_default_rubric,
+        list_default_rubrics,
+    )
+
+    console.print("\n[bold]Available Default Rubrics[/bold]")
+    console.print(
+        "[dim](Can be created with: deep-brief rubric create --type <type>)[/dim]\n"
+    )
+
+    for rubric_type in list_default_rubrics():
+        rubric = get_default_rubric(rubric_type)
+        if rubric:
+            console.print(f"  [cyan]{rubric_type.upper()}[/cyan]")
+            console.print(f"    {rubric.description}")
+            console.print(f"    Categories: {len(rubric.categories)}")
+            total_criteria = sum(len(cat.criteria) for cat in rubric.categories)
+            console.print(f"    Criteria: {total_criteria}\n")
+
+    custom_rubrics = repo.list_rubrics()
+    if custom_rubrics:
+        console.print("[bold]Custom Rubrics[/bold]\n")
+        for rubric in custom_rubrics:
+            status = (
+                "[yellow]Template[/yellow]"
+                if rubric.is_template
+                else "[cyan]Custom[/cyan]"
+            )
+            console.print(f"  {rubric.name} [{status}]")
+            console.print(f"    ID: {rubric.id}")
+            console.print(f"    Categories: {len(rubric.categories)}")
+            console.print(f"    Created: {rubric.created_at.strftime('%Y-%m-%d')}\n")
+    else:
+        console.print(
+            "[dim]No custom rubrics yet. Create one with 'deep-brief rubric create'[/dim]\n"
+        )
+
+
+def _rubric_show(repo: "RubricRepository", rubric_id: str) -> None:
+    """Show details of a rubric."""
+    rubric = repo.load(rubric_id)
+    if not rubric:
+        console.print(f"[red]Rubric not found: {rubric_id}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold blue]{rubric.name}[/bold blue]")
+    if rubric.description:
+        console.print(f"[dim]{rubric.description}[/dim]")
+
+    console.print(f"\nID: {rubric.id}")
+    console.print(
+        f"Score Range: {rubric.scoring_scale.min_score}-{rubric.scoring_scale.max_score}"
+    )
+    if rubric.tags:
+        console.print(f"Tags: {', '.join(rubric.tags)}")
+
+    console.print("\n[bold]Categories:[/bold]")
+    for category in rubric.categories:
+        console.print(f"\n  [cyan]{category.name}[/cyan] (weight: {category.weight})")
+        if category.description:
+            console.print(f"  [dim]{category.description}[/dim]")
+        console.print("  Criteria:")
+        for criterion in category.criteria:
+            console.print(f"    • {criterion.name} (weight: {criterion.weight})")
+            if criterion.description:
+                console.print(f"      {criterion.description}")
+
+    console.print()
+
+
+def _rubric_create(repo: "RubricRepository", rubric_type: str) -> None:
+    """Create a rubric from a default template."""
+    from deep_brief.analysis.default_rubrics import get_default_rubric
+
+    rubric = get_default_rubric(rubric_type)
+    if not rubric:
+        console.print(f"[red]Unknown rubric type: {rubric_type}[/red]")
+        raise typer.Exit(1)
+
+    repo.save(rubric)
+    console.print(f"\n[green]✓[/green] Created rubric: [bold]{rubric.name}[/bold]")
+    console.print(f"  ID: {rubric.id}")
+    console.print(f"  Categories: {len(rubric.categories)}")
+    total_criteria = sum(len(cat.criteria) for cat in rubric.categories)
+    console.print(f"  Criteria: {total_criteria}")
+    console.print(
+        f"\n[dim]Rubric saved to: {repo.storage_dir / f'{rubric.id}.json'}[/dim]\n"
+    )
+
+
+def _rubric_export(repo: "RubricRepository", rubric_id: str, output_path: Path) -> None:
+    """Export a rubric to JSON file."""
+    rubric = repo.load(rubric_id)
+    if not rubric:
+        console.print(f"[red]Rubric not found: {rubric_id}[/red]")
+        raise typer.Exit(1)
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    import json
+
+    with open(output_path, "w") as f:
+        json.dump(rubric.to_dict(), f, indent=2, default=str)
+
+    console.print(
+        f"\n[green]✓[/green] Exported rubric to: [bold]{output_path}[/bold]\n"
+    )
+
+
+def _rubric_delete(repo: "RubricRepository", rubric_id: str) -> None:
+    """Delete a custom rubric."""
+    if not repo.load(rubric_id):
+        console.print(f"[red]Rubric not found: {rubric_id}[/red]")
+        raise typer.Exit(1)
+
+    confirm = typer.confirm(f"Delete rubric {rubric_id}?")
+    if not confirm:
+        console.print("[dim]Cancelled[/dim]")
+        return
+
+    repo.delete(rubric_id)
+    console.print(f"\n[green]✓[/green] Deleted rubric: {rubric_id}\n")
 
 
 def main() -> None:

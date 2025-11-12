@@ -254,7 +254,9 @@ class ImageCaptioner:
                     "max_length": max_length,
                     "num_beams": num_beams,
                     "num_return_sequences": min(num_return_sequences, num_beams),
-                    "do_sample": temperature > 1.0 if temperature is not None else False,
+                    "do_sample": temperature > 1.0
+                    if temperature is not None
+                    else False,
                     "early_stopping": True,
                 }
 
@@ -263,7 +265,9 @@ class ImageCaptioner:
                     generation_kwargs["temperature"] = temperature
 
                 # Add pad_token_id if available
-                if hasattr(processor, "tokenizer") and hasattr(processor.tokenizer, "pad_token_id"):
+                if hasattr(processor, "tokenizer") and hasattr(
+                    processor.tokenizer, "pad_token_id"
+                ):
                     pad_token_id = processor.tokenizer.pad_token_id
                     if pad_token_id is not None:
                         generation_kwargs["pad_token_id"] = pad_token_id
@@ -524,7 +528,9 @@ class ImageCaptioner:
                 # Type: ignore for len() on potentially unknown type
                 if len(arr_shape) == 3 and arr_shape[2] == 3:  # type: ignore[arg-type]
                     # Type annotation to help with numpy array indexing
-                    image_array_rgb: np.ndarray[Any, np.dtype[np.uint8]] = image_array[:, :, ::-1]  # type: ignore[misc]
+                    image_array_rgb: np.ndarray[Any, np.dtype[np.uint8]] = image_array[
+                        :, :, ::-1
+                    ]  # type: ignore[misc]
                     image_input = Image.fromarray(image_array_rgb)
                 else:
                     # Type: ignore because numpy arrays are partially typed

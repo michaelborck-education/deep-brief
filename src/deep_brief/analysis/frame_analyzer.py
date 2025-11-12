@@ -515,9 +515,7 @@ class FrameAnalysisPipeline:
             return "unknown"
 
         # Find dominant layout type
-        dominant_layout: str = max(
-            layout_counts.items(), key=lambda x: x[1]
-        )[0]
+        dominant_layout: str = max(layout_counts.items(), key=lambda x: x[1])[0]
 
         # Map to content type
         content_type_mapping: dict[str, str] = {

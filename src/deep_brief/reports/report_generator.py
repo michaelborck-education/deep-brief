@@ -453,7 +453,10 @@ class ReportGenerator:
         if customization.include_ocr:
             fieldnames.extend(["ocr_text", "ocr_confidence", "num_text_regions"])
 
-        if customization.include_object_detection and customization.include_detected_objects:
+        if (
+            customization.include_object_detection
+            and customization.include_detected_objects
+        ):
             fieldnames.extend(["num_objects_detected", "detected_objects"])
 
         # Limit frames if requested
@@ -482,13 +485,18 @@ class ReportGenerator:
                 if customization.include_ocr:
                     row.update(
                         {
-                            "ocr_text": (frame.get("ocr_text", "") or "")[:100],  # Limit text
+                            "ocr_text": (frame.get("ocr_text", "") or "")[
+                                :100
+                            ],  # Limit text
                             "ocr_confidence": frame.get("ocr_confidence", ""),
                             "num_text_regions": frame.get("num_text_regions", ""),
                         }
                     )
 
-                if customization.include_object_detection and customization.include_detected_objects:
+                if (
+                    customization.include_object_detection
+                    and customization.include_detected_objects
+                ):
                     row.update(
                         {
                             "num_objects_detected": frame.get(
@@ -539,8 +547,12 @@ class ReportGenerator:
                 lines.append("SPEECH METRICS")
                 lines.append("-" * 40)
                 lines.append(f"Total Words: {metrics.get('total_words', 0)}")
-                lines.append(f"Speaking Time: {metrics.get('total_speech_duration', 0):.2f}s")
-                lines.append(f"Speaking Rate: {metrics.get('speaking_rate_wpm', 0):.1f} WPM")
+                lines.append(
+                    f"Speaking Time: {metrics.get('total_speech_duration', 0):.2f}s"
+                )
+                lines.append(
+                    f"Speaking Rate: {metrics.get('speaking_rate_wpm', 0):.1f} WPM"
+                )
                 lines.append("")
 
         # API costs
@@ -562,8 +574,7 @@ class ReportGenerator:
                 lines.append("TRANSCRIPTION SUMMARY")
                 lines.append("-" * 40)
                 lines.append(
-                    full_text[: customization.max_frames_in_summary * 10]
-                    + "..."
+                    full_text[: customization.max_frames_in_summary * 10] + "..."
                 )
                 lines.append("")
 
@@ -573,7 +584,9 @@ class ReportGenerator:
             lines.append(f"FRAME ANALYSIS SUMMARY ({len(frames)} frames)")
             lines.append("-" * 40)
             for frame in frames[: customization.max_frames_in_summary]:
-                lines.append(f"Frame {frame.get('frame_number')}: {frame.get('timestamp'):.2f}s")
+                lines.append(
+                    f"Frame {frame.get('frame_number')}: {frame.get('timestamp'):.2f}s"
+                )
                 if customization.include_visual_analysis and frame.get("caption"):
                     lines.append(f"  Caption: {frame.get('caption')}")
                 if customization.include_ocr and frame.get("ocr_text"):
@@ -636,10 +649,11 @@ class ReportGenerator:
 
         # Update analysis metadata flags
         filtered["has_captions"] = (
-            customization.include_visual_analysis and filtered.get("has_captions", False)
+            customization.include_visual_analysis
+            and filtered.get("has_captions", False)
         )
-        filtered["has_ocr"] = (
-            customization.include_ocr and filtered.get("has_ocr", False)
+        filtered["has_ocr"] = customization.include_ocr and filtered.get(
+            "has_ocr", False
         )
         filtered["has_object_detection"] = (
             customization.include_object_detection

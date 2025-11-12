@@ -346,7 +346,9 @@ class OCRDetector:
             # pytesseract returns a dict with keys: level, page_num, block_num, par_num,
             # line_num, word_num, left, top, width, height, conf, text
             data = pytesseract.image_to_data(  # type: ignore
-                image, config=self.tesseract_config, output_type=pytesseract.Output.DICT  # type: ignore
+                image,
+                config=self.tesseract_config,
+                output_type=pytesseract.Output.DICT,  # type: ignore
             )
 
             # Cast to dict to help type checker understand structure
@@ -356,7 +358,9 @@ class OCRDetector:
             for i in range(n_boxes):
                 # Skip if confidence is too low or text is empty
                 conf_value = data_dict["conf"][i]
-                confidence = float(conf_value) if conf_value not in (None, "", -1) else -1.0
+                confidence = (
+                    float(conf_value) if conf_value not in (None, "", -1) else -1.0
+                )
                 text_value = data_dict["text"][i]
                 text = str(text_value).strip() if text_value is not None else ""
 

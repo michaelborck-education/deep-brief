@@ -130,7 +130,9 @@ class CLIProgressTracker(ProgressTracker):
                     desc = f"{desc} • {current_step}"
                 from rich.progress import TaskID
 
-                self.progress.update(TaskID(task_id), completed=percentage, description=desc)
+                self.progress.update(
+                    TaskID(task_id), completed=percentage, description=desc
+                )
 
     def complete_operation(
         self, operation_id: str, details: dict[str, Any] | None = None
