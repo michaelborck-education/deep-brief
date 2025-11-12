@@ -15,7 +15,6 @@ from deep_brief.core.audio_extractor import AudioExtractor, AudioInfo
 from deep_brief.core.exceptions import (
     AudioProcessingError,
     ErrorCode,
-    FFmpegError,
 )
 from deep_brief.core.video_processor import VideoInfo
 from deep_brief.utils.config import AudioConfig, DeepBriefConfig, ProcessingConfig

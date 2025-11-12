@@ -312,7 +312,7 @@ class ImageCaptioner:
 
             return result
 
-        except VideoProcessingError as e:
+        except VideoProcessingError:
             # Re-raise VideoProcessingError as-is to preserve original error code
             raise
         except Exception as e:
