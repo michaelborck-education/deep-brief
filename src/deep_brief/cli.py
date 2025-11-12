@@ -51,27 +51,45 @@ def analyze(
         "--use-api",
         help="Use API for captioning instead of local model",
     ),
+    grade: bool = typer.Option(
+        False,
+        "--grade",
+        "-g",
+        help="Enable grading with feedback (uses defaults: general rubric, student audience, summary detail)",
+    ),
     rubric_type: str | None = typer.Option(
         None,
         "--rubric-type",
         "-t",
-        help="Rubric type for grading (academic, business, teaching, general)",
+        help="Rubric type for grading (academic, business, teaching, general). Default: general",
     ),
     rubric_file: Path | None = typer.Option(
         None, "--rubric-file", "-r", help="Path to custom rubric JSON file for grading"
+    ),
+    feedback_audience: str | None = typer.Option(
+        None,
+        "--feedback-audience",
+        help="Target audience for feedback: student (developmental, encouraging) or teacher (assessment-focused). Default: student",
+    ),
+    feedback_detail: str | None = typer.Option(
+        None,
+        "--feedback-detail",
+        help="Level of detail in feedback: short (assessment only), summary (strengths + improvements), long (full detailed feedback). Default: summary",
     ),
 ) -> None:
     """
     Analyze a video file for presentation feedback.
 
-    If rubric options (--rubric-type or --rubric-file) are provided, generates
-    LLM-based grading feedback in addition to the analysis report.
+    If --grade flag or rubric options (--rubric-type or --rubric-file) are provided,
+    generates LLM-based grading feedback in addition to the analysis report.
 
     If no video path is provided, launches the web interface.
 
     Examples:
         deep-brief analyze video.mp4
-        deep-brief analyze video.mp4 --rubric-type academic
+        deep-brief analyze video.mp4 --grade
+        deep-brief analyze video.mp4 --grade --rubric-type academic --feedback-detail long
+        deep-brief analyze video.mp4 --rubric-type academic --feedback-audience teacher
         deep-brief analyze video.mp4 --rubric-file my-rubric.json --api-provider anthropic
     """
     # Load configuration
@@ -118,8 +136,11 @@ def analyze(
             config_file=config_file,
             verbose=verbose,
             logger=logger,
+            grade=grade,
             rubric_type=rubric_type,
             rubric_file=rubric_file,
+            feedback_audience=feedback_audience,
+            feedback_detail=feedback_detail,
             api_provider=api_provider,
             api_model=api_model,
         )
@@ -141,8 +162,11 @@ def _analyze_video_cli(
     config_file: Path | None,
     verbose: bool,
     logger: logging.Logger,
+    grade: bool = False,
     rubric_type: str | None = None,
     rubric_file: Path | None = None,
+    feedback_audience: str | None = None,
+    feedback_detail: str | None = None,
     api_provider: str | None = None,
     api_model: str | None = None,
 ) -> None:
@@ -156,8 +180,11 @@ def _analyze_video_cli(
         config_file: Configuration file path (for logging)
         verbose: Verbose output flag
         logger: Logger instance
-        rubric_type: Optional rubric type for grading
+        grade: Enable grading with defaults (general rubric, student audience, summary detail)
+        rubric_type: Optional rubric type for grading (academic, business, teaching, general)
         rubric_file: Optional custom rubric file for grading
+        feedback_audience: Target audience for feedback (student or teacher)
+        feedback_detail: Level of detail (short, summary, long)
         api_provider: Optional API provider for grading
         api_model: Optional API model for grading
     """
@@ -359,19 +386,24 @@ def _analyze_video_cli(
 
         logger.info(f"Analysis complete. Results saved to {output_path}")
 
-        # Phase 5: Grading (if rubric provided)
-        if rubric_type or rubric_file:
+        # Phase 5: Grading (if rubric provided or --grade flag set)
+        # Apply defaults if --grade flag is set
+        effective_rubric_type = rubric_type or ("general" if grade else None)
+        effective_audience = feedback_audience or ("student" if (grade or rubric_type or rubric_file) else None)
+        effective_detail = feedback_detail or ("summary" if (grade or rubric_type or rubric_file) else None)
+
+        if effective_rubric_type or rubric_file:
             console.print("\n[bold cyan]Generating grading feedback...[/bold cyan]")
             try:
                 from deep_brief.analysis.default_rubrics import get_default_rubric
                 from deep_brief.analysis.rubric_system import Rubric
 
                 # Load rubric
-                if rubric_type:
-                    rubric = get_default_rubric(rubric_type)
+                if effective_rubric_type:
+                    rubric = get_default_rubric(effective_rubric_type)
                     if not rubric:
                         console.print(
-                            f"[red]✗ Unknown rubric type: {rubric_type}[/red]\n"
+                            f"[red]✗ Unknown rubric type: {effective_rubric_type}[/red]\n"
                             f"[dim]Available: academic, business, teaching, general[/dim]"
                         )
                         raise typer.Exit(1)
@@ -392,6 +424,9 @@ def _analyze_video_cli(
                     console.print(
                         f"[cyan]→[/cyan] Using rubric: [bold]{rubric.name}[/bold]"
                     )
+
+                # Show feedback options
+                console.print(f"[cyan]→[/cyan] Audience: [bold]{effective_audience}[/bold], Detail: [bold]{effective_detail}[/bold]")
 
                 # Prepare analysis data for grading
                 video_info_dict: dict[str, Any] = {}
@@ -414,6 +449,8 @@ def _analyze_video_cli(
                 feedback_text = _generate_grading_feedback(
                     rubric=rubric,
                     analysis_data=grading_data,
+                    audience=effective_audience,
+                    detail=effective_detail,
                     api_provider=api_provider,
                     api_model=api_model,
                 )
@@ -719,6 +756,8 @@ def _rubric_delete(repo: "RubricRepository", rubric_id: str) -> None:
 def _generate_grading_feedback(
     rubric: Any,
     analysis_data: dict[str, Any],
+    audience: str | None = None,
+    detail: str | None = None,
     api_provider: str | None = None,
     api_model: str | None = None,
 ) -> str:
@@ -728,6 +767,8 @@ def _generate_grading_feedback(
     Args:
         rubric: Rubric object to use for grading
         analysis_data: Analysis data to include in the prompt
+        audience: Target audience (student or teacher). Default: student
+        detail: Level of detail (short, summary, long). Default: summary
         api_provider: API provider to use (anthropic, openai, google)
         api_model: API model to use
 
@@ -738,6 +779,10 @@ def _generate_grading_feedback(
         typer.Exit: If API key not found or LLM call fails
     """
     from deep_brief.utils.api_keys import get_api_key
+
+    # Apply defaults
+    audience = audience or "student"
+    detail = detail or "summary"
 
     # Determine API provider
     if api_provider:
@@ -760,7 +805,7 @@ def _generate_grading_feedback(
         raise typer.Exit(1)
 
     # Build prompt for LLM
-    prompt = _build_grading_prompt(rubric, analysis_data)
+    prompt = _build_grading_prompt(rubric, analysis_data, audience, detail)
 
     # Call appropriate LLM
     feedback_text: str = ""
@@ -808,12 +853,16 @@ def _generate_grading_feedback(
     return feedback_text  # type: ignore[return-value]
 
 
-def _build_grading_prompt(rubric: Any, analysis_data: dict[str, Any]) -> str:  # type: ignore[return]
+def _build_grading_prompt(
+    rubric: Any, analysis_data: dict[str, Any], audience: str = "student", detail: str = "summary"
+) -> str:  # type: ignore[return]
     """Build the prompt for LLM grading.
 
     Args:
         rubric: Rubric object with categories, criteria, and scoring scale
         analysis_data: Analysis data dictionary to include in prompt
+        audience: Target audience ('student' or 'teacher')
+        detail: Level of detail ('short', 'summary', or 'long')
 
     Returns:
         Formatted prompt string for LLM evaluation
@@ -823,16 +872,21 @@ def _build_grading_prompt(rubric: Any, analysis_data: dict[str, Any]) -> str:  #
     rubric_name = str(rubric.name)  # type: ignore[attr-defined]
     rubric_desc = str(rubric.description or "")  # type: ignore[attr-defined]
 
-    prompt: str = (
-        "You are an expert presentation evaluator. Please evaluate the "
-        "following presentation based on the provided rubric.\n\n"
-        "## Rubric: "
-        + rubric_name
-        + "\n"
-        + rubric_desc
-        + "\n\n"
-        + "### Rubric Categories and Criteria:\n"
-    )
+    # Build audience-specific instruction
+    if audience == "teacher":
+        system_instruction = (
+            "You are an expert presentation evaluator providing detailed assessment feedback for educators. "
+            "Focus on rubric-based scoring, assessment findings, and areas for student development."
+        )
+    else:  # student
+        system_instruction = (
+            "You are a supportive presentation coach providing encouraging, developmental feedback to a student. "
+            "Focus on growth, strengths, and specific, actionable areas for improvement."
+        )
+
+    prompt: str = system_instruction + "\n\nPlease evaluate the following presentation based on the provided rubric.\n\n"
+    prompt += "## Rubric: " + rubric_name + "\n" + rubric_desc + "\n\n"
+    prompt += "### Rubric Categories and Criteria:\n"
 
     for category in rubric.categories:  # type: ignore[union-attr]
         cat_name = str(category.name)  # type: ignore[attr-defined]
@@ -856,15 +910,46 @@ def _build_grading_prompt(rubric: Any, analysis_data: dict[str, Any]) -> str:  #
     max_score = str(rubric.scoring_scale.max_score)  # type: ignore[union-attr]
     analysis_json = json.dumps(analysis_data, indent=2, default=str)
 
-    # Build closing section explicitly to avoid LiteralString type issues
+    # Build closing section based on detail level and audience
     closing = "\n\nPlease provide:\n"
-    closing += "1. An overall assessment\n"
-    closing += "2. Scores for each criterion (1-" + max_score + ")\n"
-    closing += "3. Specific feedback for each category\n"
-    closing += "4. Key strengths\n"
-    closing += "5. Areas for improvement\n"
-    closing += "6. Recommendations for next time\n"
-    closing += "\nFormat the response clearly with sections for each category."
+
+    if detail == "short":
+        # Short: assessment only, no tips
+        if audience == "teacher":
+            closing += "1. Overall assessment and rubric scores\n"
+            closing += "2. Key findings from the analysis\n"
+        else:  # student
+            closing += "1. Assessment of the presentation quality\n"
+            closing += "2. What was presented well\n"
+    elif detail == "summary":
+        # Summary: 2 paragraphs (strengths + improvements)
+        if audience == "teacher":
+            closing += "1. Overall assessment with scores for each criterion\n"
+            closing += "2. Key strengths demonstrated\n"
+            closing += "3. Areas for student improvement\n"
+        else:  # student
+            closing += "1. What you did well (strengths)\n"
+            closing += "2. Specific areas to work on for next time\n"
+    else:  # long
+        # Long: full detailed feedback (original behavior)
+        if audience == "teacher":
+            closing += "1. Overall assessment\n"
+            closing += "2. Detailed scores for each criterion (1-" + max_score + ")\n"
+            closing += "3. Specific feedback for each category\n"
+            closing += "4. Key strengths\n"
+            closing += "5. Areas for improvement\n"
+            closing += "6. Recommendations for student development\n"
+        else:  # student
+            closing += "1. Overall assessment\n"
+            closing += "2. Scores for each criterion (1-" + max_score + ")\n"
+            closing += "3. What you did well\n"
+            closing += "4. What to focus on next time\n"
+            closing += "5. Specific tips for improvement\n"
+            closing += "6. Next steps for growth\n"
+
+    closing += "\nFormat the response clearly."
+    if detail != "short":
+        closing += " Use sections for each category."
 
     prompt_end: str = "\n\n### Presentation Analysis Data:\n```json\n"
     prompt_end += analysis_json
