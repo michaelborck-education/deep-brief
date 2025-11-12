@@ -366,11 +366,7 @@ class TestConfigGlobalInstance:
 
     def test_reset_config_to_defaults(self) -> None:
         """Test resetting configuration to defaults."""
-        # Modify global config
-        config = get_config()
-        original_name = config.app_name
-
-        # Reset
+        # Reset configuration
         reset_config = reset_config_to_defaults()
 
         assert reset_config.app_name == "DeepBrief"

@@ -236,5 +236,5 @@ class AssessmentStorage:
             "min_score": min(scores) if scores else 0.0,
             "max_score": max(scores) if scores else 0.0,
             "scores": scores,
-            "assessors": sorted(list(assessors)),
+            "assessors": sorted(assessors),
         }

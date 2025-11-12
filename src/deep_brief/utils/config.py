@@ -490,11 +490,11 @@ def export_config_to_env(config: DeepBriefConfig, output_path: Path) -> None:
 
             if isinstance(value, dict):
                 # Recursively flatten nested dicts
-                nested = flatten_config(value, env_key)
+                nested = flatten_config(value, env_key)  # type: ignore[arg-type]
                 result.update(nested)
             elif isinstance(value, list):
                 # Convert lists to comma-separated strings
-                result[env_key] = ",".join(str(v) for v in value)
+                result[env_key] = ",".join(str(v) for v in value)  # type: ignore[arg-type]
             elif isinstance(value, bool):
                 # Convert bools to string
                 result[env_key] = "true" if value else "false"
@@ -506,7 +506,7 @@ def export_config_to_env(config: DeepBriefConfig, output_path: Path) -> None:
 
         return result
 
-    config_dict = config.model_dump(exclude={"version"}, mode="json")
+    config_dict: dict[str, Any] = config.model_dump(exclude={"version"}, mode="json")
     env_vars = flatten_config(config_dict)
 
     with open(output_path, "w", encoding="utf-8") as f:

@@ -19,12 +19,11 @@ class WhisperModel:
         carry_initial_prompt: bool = False,
         word_timestamps: bool = False,
         prepend_punctuations: str = "\"'¿([{-",
-        append_punctuations: str = "\"'.。,，!！?？:：\")]}、",
+        append_punctuations: str = '"\'.。,，!！?？:：")]}、',
         clip_timestamps: str | list[float] = "0",
         hallucination_silence_threshold: float | None = None,
         **decode_options: Any,
     ) -> dict[str, str | list[dict[str, Any]]]: ...
-    
     def detect_language(self, mel: Tensor) -> tuple[str, list[float]]: ...
 
 def load_model(

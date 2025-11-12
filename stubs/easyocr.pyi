@@ -1,5 +1,5 @@
 # Type stubs for easyocr
-from typing import Any, List, Tuple, Union
+from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -7,9 +7,9 @@ from PIL import Image
 class Reader:
     def __init__(
         self,
-        lang_list: List[str] = ['en', 'ch_sim'],
+        lang_list: list[str] = ["en", "ch_sim"],
         gpu: bool = True,
-        model_storage_directory: Union[str, None] = None,
+        model_storage_directory: str | None = None,
         download_enabled: bool = True,
         recognizer: bool = True,
         detector: bool = True,
@@ -17,18 +17,17 @@ class Reader:
         quantize: bool = True,
         cudnn_benchmark: bool = False,
     ) -> None: ...
-    
     def readtext(
         self,
-        image: Union[str, np.ndarray, Image.Image],
-        decoder: str = 'greedy',
+        image: str | np.ndarray | Image.Image,
+        decoder: str = "greedy",
         beamWidth: int = 5,
         batch_size: int = 1,
         workers: int = 0,
-        allowlist: Union[str, List[str], None] = None,
-        blocklist: Union[str, List[str], None] = None,
+        allowlist: str | list[str] | None = None,
+        blocklist: str | list[str] | None = None,
         detail: int = 1,
-        rotation_info: Union[List[float], None] = None,
+        rotation_info: list[float] | None = None,
         paragraph: bool = False,
         min_size: int = 10,
         contrast_ths: float = 0.1,
@@ -50,21 +49,21 @@ class Reader:
         y_margins: int = 10,
         threshold: float = 0.2,
         box_threshold: float = 0.7,
-        output_format: str = 'standard',
+        output_format: str = "standard",
         **kwargs: Any,
-    ) -> List[Tuple[List[List[int]], str, float]]: ...
+    ) -> list[tuple[list[list[int]], str, float]]: ...
 
 def readtext(
-    image: Union[str, np.ndarray, Image.Image],
-    languages: List[str] = ['en', 'ch_sim'],
-    decoder: str = 'greedy',
+    image: str | np.ndarray | Image.Image,
+    languages: list[str] = ["en", "ch_sim"],
+    decoder: str = "greedy",
     beamWidth: int = 5,
     batch_size: int = 1,
     workers: int = 0,
-    allowlist: Union[str, List[str], None] = None,
-    blocklist: Union[str, List[str], None] = None,
+    allowlist: str | list[str] | None = None,
+    blocklist: str | list[str] | None = None,
     detail: int = 1,
-    rotation_info: Union[List[float], None] = None,
+    rotation_info: list[float] | None = None,
     paragraph: bool = False,
     min_size: int = 10,
     contrast_ths: float = 0.1,
@@ -86,6 +85,6 @@ def readtext(
     y_margins: int = 10,
     threshold: float = 0.2,
     box_threshold: float = 0.7,
-    output_format: str = 'standard',
+    output_format: str = "standard",
     **kwargs: Any,
-) -> List[Tuple[List[List[int]], str, float]]: ...
+) -> list[tuple[list[list[int]], str, float]]: ...

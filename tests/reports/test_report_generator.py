@@ -202,9 +202,7 @@ class TestReportExport:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "report.txt"
-            generator.export_report(
-                sample_report, output_path, ReportFormat.PLAIN_TEXT
-            )
+            generator.export_report(sample_report, output_path, ReportFormat.PLAIN_TEXT)
 
             assert output_path.exists()
             with open(output_path) as f:
@@ -221,7 +219,9 @@ class TestReportExport:
             output_path = Path(tmpdir) / "report.xyz"
             with pytest.raises(ValueError, match="Unsupported export format"):
                 generator.export_report(
-                    sample_report, output_path, "invalid"  # type: ignore
+                    sample_report,
+                    output_path,
+                    "invalid",  # type: ignore
                 )
 
 
@@ -285,7 +285,9 @@ class TestReportFilteringAndCustomization:
         custom = ReportCustomization(include_api_costs=False)
         filtered = generator._filter_report(sample_report, custom)
 
-        assert "api_cost_summary" not in filtered or filtered["api_cost_summary"] is None
+        assert (
+            "api_cost_summary" not in filtered or filtered["api_cost_summary"] is None
+        )
 
     def test_filter_limits_frames(self, sample_report):
         """Test filtering limits frame count."""
@@ -350,9 +352,7 @@ class TestExportToMultipleFormats:
         """Create a sample report dictionary."""
         return {
             "video": {"file_path": "/test/video.mp4"},
-            "frames": [
-                {"frame_number": 1, "timestamp": 10.0, "caption": "Test"}
-            ],
+            "frames": [{"frame_number": 1, "timestamp": 10.0, "caption": "Test"}],
             "full_transcription_text": "Test text",
         }
 
@@ -520,9 +520,7 @@ class TestTextExport:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "report.txt"
-            generator.export_report(
-                sample_report, output_path, ReportFormat.PLAIN_TEXT
-            )
+            generator.export_report(sample_report, output_path, ReportFormat.PLAIN_TEXT)
 
             with open(output_path) as f:
                 content = f.read()
@@ -537,9 +535,7 @@ class TestTextExport:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "report.txt"
-            generator.export_report(
-                sample_report, output_path, ReportFormat.PLAIN_TEXT
-            )
+            generator.export_report(sample_report, output_path, ReportFormat.PLAIN_TEXT)
 
             with open(output_path) as f:
                 content = f.read()

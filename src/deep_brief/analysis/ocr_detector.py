@@ -81,8 +81,8 @@ class OCRDetector:
         self.min_text_length = self.config.visual_analysis.ocr_text_min_length
 
         # Initialize engine-specific components
-        self.tesseract_config = None
-        self.easyocr_reader = None
+        self.tesseract_config: str | None = None
+        self.easyocr_reader: Any = None
 
         self._validate_dependencies()
         self._initialize_engine()
@@ -347,12 +347,12 @@ class OCRDetector:
             # line_num, word_num, left, top, width, height, conf, text
             data = pytesseract.image_to_data(  # type: ignore
                 image,
-                config=self.tesseract_config,
+                config=self.tesseract_config or "",
                 output_type=pytesseract.Output.DICT,  # type: ignore
             )
 
             # Cast to dict to help type checker understand structure
-            data_dict = cast(dict[str, list[Any]], data)
+            data_dict = cast("dict[str, list[Any]]", data)
 
             n_boxes = len(data_dict["level"])
             for i in range(n_boxes):
@@ -399,7 +399,7 @@ class OCRDetector:
             # EasyOCR returns list of tuples: (bbox_points, text, confidence)
             # where bbox_points is a list of 4 [x, y] coordinates
             results = self.easyocr_reader.readtext(image_array)  # type: ignore
-            results_list = cast(list[tuple[list[list[float]], str, float]], results)
+            results_list = cast("list[tuple[list[list[float]], str, float]]", results)
 
             for result in results_list:
                 bbox_points, text, confidence = result
@@ -537,7 +537,7 @@ class OCRDetector:
                 # Get available languages from Tesseract
                 langs = pytesseract.get_languages(config="")  # type: ignore
                 # pytesseract.get_languages returns a list of strings
-                return cast(list[str], langs)
+                return cast("list[str]", langs)
             except Exception:
                 # Return common language codes if detection fails
                 return ["eng", "spa", "fra", "deu", "ita", "por", "rus", "jpn", "kor"]

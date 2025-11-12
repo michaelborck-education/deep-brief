@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -115,10 +115,10 @@ class Rubric(BaseModel):
         description="Tags for organization (e.g., 'Physics 101', 'Final Project')",
     )
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc), description="Creation time"
+        default_factory=lambda: datetime.now(UTC), description="Creation time"
     )
     modified_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Last modification time",
     )
     created_by: str | None = Field(None, description="User who created this rubric")
@@ -179,7 +179,7 @@ class RubricAssessment(BaseModel):
         None, description="ID of video analysis being assessed"
     )
     assessed_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Assessment time",
     )
     assessed_by: str | None = Field(None, description="User who performed assessment")
@@ -285,7 +285,7 @@ class RubricRepository:
     def save(self, rubric: Rubric) -> None:
         """Save a rubric to disk."""
         rubric_file = self.storage_dir / f"{rubric.id}.json"
-        rubric.modified_at = datetime.now(timezone.utc)
+        rubric.modified_at = datetime.now(UTC)
 
         with open(rubric_file, "w") as f:
             json.dump(rubric.to_dict(), f, indent=2)

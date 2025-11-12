@@ -528,10 +528,11 @@ class ImageCaptioner:
                 # Type: ignore for len() on potentially unknown type
                 if len(arr_shape) == 3 and arr_shape[2] == 3:  # type: ignore[arg-type]
                     # Type annotation to help with numpy array indexing
-                    image_array_rgb: np.ndarray[Any, np.dtype[np.uint8]] = image_array[
+                    # type: ignore for numpy array slicing which has dynamic typing
+                    image_array_rgb = image_array[  # type: ignore[var-annotated]
                         :, :, ::-1
-                    ]  # type: ignore[misc]
-                    image_input = Image.fromarray(image_array_rgb)
+                    ]
+                    image_input = Image.fromarray(image_array_rgb)  # type: ignore[arg-type]
                 else:
                     # Type: ignore because numpy arrays are partially typed
                     image_input = Image.fromarray(image_array)  # type: ignore[arg-type]

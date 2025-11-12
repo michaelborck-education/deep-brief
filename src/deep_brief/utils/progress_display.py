@@ -80,11 +80,13 @@ class CLIProgressTracker(ProgressTracker):
     def start_operation(
         self,
         operation_id: str,
-        operation_name: str | None = None,
-        total_steps: int | None = None,
-        details: dict[str, Any] | None = None,
+        operation_name: str | None = None,  # noqa: ARG002
+        total_steps: int | None = None,  # noqa: ARG002
+        details: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> None:
         """Mark an operation as started."""
+        # Parameters operation_name, total_steps, details are part of the interface
+        # but not currently used in the CLI implementation
         if not self.progress:
             return
 
@@ -100,8 +102,8 @@ class CLIProgressTracker(ProgressTracker):
         operation_id: str,
         progress: float,
         current_step: str | None = None,
-        current_step_number: int | None = None,
-        details: dict[str, Any] | None = None,
+        current_step_number: int | None = None,  # noqa: ARG002
+        details: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> None:
         """
         Update current operation progress.
@@ -111,7 +113,10 @@ class CLIProgressTracker(ProgressTracker):
             progress: Progress value (0.0 to 1.0)
             current_step: Optional description of current step
             current_step_number: Optional step number
+            details: Optional additional details
         """
+        # Parameters current_step_number and details are part of the interface
+        # but not currently used in the CLI implementation
         if not self.progress:
             return
 
@@ -135,9 +140,11 @@ class CLIProgressTracker(ProgressTracker):
                 )
 
     def complete_operation(
-        self, operation_id: str, details: dict[str, Any] | None = None
+        self, operation_id: str, details: dict[str, Any] | None = None  # noqa: ARG002
     ) -> None:
         """Mark an operation as complete."""
+        # Parameter details is part of the interface but not currently used
+        # in the CLI implementation
         if not self.progress:
             return
 
@@ -148,9 +155,14 @@ class CLIProgressTracker(ProgressTracker):
             self.progress.update(TaskID(task_id), completed=100)
 
     def fail_operation(
-        self, operation_id: str, error: str, details: dict[str, Any] | None = None
+        self,
+        operation_id: str,
+        error: str,  # noqa: ARG002
+        details: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> None:
         """Mark an operation as failed."""
+        # Parameters error and details are part of the interface but not currently
+        # used in the CLI implementation
         if not self.progress:
             return
 

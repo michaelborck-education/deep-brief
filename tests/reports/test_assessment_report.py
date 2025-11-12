@@ -1,7 +1,5 @@
 """Tests for assessment report module."""
 
-
-
 from deep_brief.reports.assessment_report import (
     AssessmentDiarizationSegment,
     AssessmentReport,

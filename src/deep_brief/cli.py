@@ -416,7 +416,7 @@ def rubric(
     output: Path | None = typer.Option(
         None, "--output", "-o", help="Output file path (for export action)"
     ),
-    rubrics_dir: Path | None = typer.Option(
+    rubrics_dir: Path = typer.Option(
         Path("rubrics"), "--dir", "-d", help="Directory for storing rubrics"
     ),
 ) -> None:
