@@ -39,7 +39,7 @@ def analyze(
     api_provider: str | None = typer.Option(
         None,
         "--api-provider",
-        help="API provider for captioning (anthropic, openai, google)",
+        help="API provider (anthropic, openai, google) for captioning and grading",
     ),
     api_model: str | None = typer.Option(
         None,
@@ -51,11 +51,28 @@ def analyze(
         "--use-api",
         help="Use API for captioning instead of local model",
     ),
+    rubric_type: str | None = typer.Option(
+        None,
+        "--rubric-type",
+        "-t",
+        help="Rubric type for grading (academic, business, teaching, general)",
+    ),
+    rubric_file: Path | None = typer.Option(
+        None, "--rubric-file", "-r", help="Path to custom rubric JSON file for grading"
+    ),
 ) -> None:
     """
     Analyze a video file for presentation feedback.
 
+    If rubric options (--rubric-type or --rubric-file) are provided, generates
+    LLM-based grading feedback in addition to the analysis report.
+
     If no video path is provided, launches the web interface.
+
+    Examples:
+        deep-brief analyze video.mp4
+        deep-brief analyze video.mp4 --rubric-type academic
+        deep-brief analyze video.mp4 --rubric-file my-rubric.json --api-provider anthropic
     """
     # Load configuration
     config = load_config(config_file) if config_file else get_config()
@@ -101,6 +118,10 @@ def analyze(
             config_file=config_file,
             verbose=verbose,
             logger=logger,
+            rubric_type=rubric_type,
+            rubric_file=rubric_file,
+            api_provider=api_provider,
+            api_model=api_model,
         )
     else:
         # Web UI mode
@@ -120,6 +141,10 @@ def _analyze_video_cli(
     config_file: Path | None,
     verbose: bool,
     logger: logging.Logger,
+    rubric_type: str | None = None,
+    rubric_file: Path | None = None,
+    api_provider: str | None = None,
+    api_model: str | None = None,
 ) -> None:
     """
     Perform video analysis in CLI mode.
@@ -131,6 +156,10 @@ def _analyze_video_cli(
         config_file: Configuration file path (for logging)
         verbose: Verbose output flag
         logger: Logger instance
+        rubric_type: Optional rubric type for grading
+        rubric_file: Optional custom rubric file for grading
+        api_provider: Optional API provider for grading
+        api_model: Optional API model for grading
     """
     # Validate video path
     video_path_obj = Path(video_path)
@@ -329,6 +358,76 @@ def _analyze_video_cli(
             console.print(f"[green]✓ JSON report:[/green] {report_paths['json']}")
 
         logger.info(f"Analysis complete. Results saved to {output_path}")
+
+        # Phase 5: Grading (if rubric provided)
+        if rubric_type or rubric_file:
+            console.print("\n[bold cyan]Generating grading feedback...[/bold cyan]")
+            try:
+                from deep_brief.analysis.default_rubrics import get_default_rubric
+                from deep_brief.analysis.rubric_system import Rubric
+
+                # Load rubric
+                if rubric_type:
+                    rubric = get_default_rubric(rubric_type)
+                    if not rubric:
+                        console.print(
+                            f"[red]✗ Unknown rubric type: {rubric_type}[/red]\n"
+                            f"[dim]Available: academic, business, teaching, general[/dim]"
+                        )
+                        raise typer.Exit(1)
+                    console.print(f"[cyan]→[/cyan] Using rubric: [bold]{rubric.name}[/bold]")
+                else:
+                    if not rubric_file or not rubric_file.exists():
+                        console.print(f"[red]✗ Rubric file not found: {rubric_file}[/red]")
+                        raise typer.Exit(1)
+                    import json
+                    with open(rubric_file) as f:
+                        rubric_data = json.load(f)
+                    rubric = Rubric.from_dict(rubric_data)
+                    console.print(f"[cyan]→[/cyan] Using rubric: [bold]{rubric.name}[/bold]")
+
+                # Prepare analysis data for grading
+                grading_data = {
+                    "video_info": result.video_info.to_dict()
+                    if hasattr(result.video_info, "to_dict")
+                    else {},
+                    "processing_time": processing_time,
+                }
+                if speech_analysis:
+                    grading_data["speech_analysis"] = speech_analysis
+                if visual_analysis:
+                    grading_data["visual_analysis"] = visual_analysis
+
+                # Generate feedback using LLM
+                console.print("[cyan]→[/cyan] Generating LLM feedback...")
+                feedback_text = _generate_grading_feedback(
+                    rubric=rubric,
+                    analysis_data=grading_data,
+                    api_provider=api_provider,
+                    api_model=api_model,
+                )
+
+                # Save feedback report
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                feedback_file = output_path / f"feedback_{timestamp}.md"
+
+                with open(feedback_file, "w") as f:
+                    f.write("# Presentation Feedback Report\n\n")
+                    f.write(f"**Rubric:** {rubric.name}\n")
+                    f.write(f"**Generated:** {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                    f.write("## Feedback\n\n")
+                    f.write(feedback_text)
+
+                console.print("[green]✓[/green] Feedback saved to:")
+                console.print(f"  [bold]{feedback_file}[/bold]")
+                logger.info(f"Grading feedback saved to {feedback_file}")
+
+            except typer.Exit:
+                raise
+            except Exception as e:
+                console.print(f"[red]✗ Grading error: {str(e)}[/red]")
+                logger.error(f"Grading error: {e}", exc_info=verbose)
+                raise typer.Exit(1) from e
 
     except VideoProcessingError as e:
         error_msg = str(e)
@@ -606,6 +705,82 @@ def _rubric_delete(repo: "RubricRepository", rubric_id: str) -> None:
     console.print(f"\n[green]✓[/green] Deleted rubric: {rubric_id}\n")
 
 
+def _generate_grading_feedback(
+    rubric: Any, analysis_data: dict[str, Any], api_provider: str | None = None, api_model: str | None = None
+) -> str:
+    """
+    Generate grading feedback using LLM.
+
+    Args:
+        rubric: Rubric object to use for grading
+        analysis_data: Analysis data to include in the prompt
+        api_provider: API provider to use (anthropic, openai, google)
+        api_model: API model to use
+
+    Returns:
+        Generated feedback text
+
+    Raises:
+        typer.Exit: If API key not found or LLM call fails
+    """
+    from deep_brief.utils.api_keys import get_api_key
+
+    # Determine API provider
+    if not api_provider:
+        # Try to auto-detect from config
+        config = get_config()
+        api_provider = getattr(config.api_settings, "default_provider", "anthropic")
+
+    api_key = get_api_key(api_provider)
+    if not api_key:
+        console.print(
+            f"[red]✗ No API key found for {api_provider}[/red]\n"
+            f"[dim]Set {api_provider.upper()}_API_KEY environment variable[/dim]"
+        )
+        raise typer.Exit(1)
+
+    # Build prompt for LLM
+    prompt = _build_grading_prompt(rubric, analysis_data)
+
+    # Call appropriate LLM
+    feedback_text = None
+    if api_provider.lower() == "anthropic":
+        from anthropic import Anthropic
+
+        client = Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model=api_model or "claude-3-5-sonnet-20241022",
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        feedback_text = response.content[0].text
+
+    elif api_provider.lower() == "openai":
+        from openai import OpenAI
+
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model=api_model or "gpt-4o",
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        feedback_text = response.choices[0].message.content
+
+    elif api_provider.lower() == "google":
+        import google.generativeai as genai
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(api_model or "gemini-2.0-flash")
+        response = model.generate_content(prompt)
+        feedback_text = response.text
+
+    if not feedback_text:
+        console.print("[red]✗ Failed to generate feedback[/red]")
+        raise typer.Exit(1)
+
+    return feedback_text
+
+
 @app.command()
 def grade(
     input_file: Path | None = typer.Argument(
@@ -631,7 +806,10 @@ def grade(
     ),
     api_model: str | None = typer.Option(None, "--api-model", help="API model to use"),
 ) -> None:
-    """Grade a video using LLM-based feedback.
+    """Grade a video or analysis using LLM-based feedback.
+
+    [DEPRECATED] Use 'deep-brief analyze --rubric-type <type>' instead.
+    This command is maintained for backward compatibility.
 
     Takes a video file or analysis JSON file, plus a rubric (default or custom),
     then generates detailed feedback using an LLM.
@@ -639,11 +817,13 @@ def grade(
     Provide either a positional file (video or analysis.json) OR use --video option.
     Either specify --rubric-type (for defaults) OR --rubric-file (for custom).
 
-    Example:
+    Example (use analyze instead):
+        deep-brief analyze video.mp4 --rubric-type academic
+        deep-brief analyze video.mp4 --rubric-file my-rubric.json
+
+    Legacy examples (still supported):
         deep-brief grade video.mp4 --rubric-type academic
         deep-brief grade analysis.json --rubric-type academic
-        deep-brief grade --video video.mp4 --rubric-type business --output reports/
-        deep-brief grade analysis.json --rubric-file my-rubric.json
     """
     import json
 
