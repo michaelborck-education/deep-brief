@@ -140,7 +140,9 @@ class CLIProgressTracker(ProgressTracker):
                 )
 
     def complete_operation(
-        self, operation_id: str, details: dict[str, Any] | None = None  # noqa: ARG002
+        self,
+        operation_id: str,
+        details: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> None:
         """Mark an operation as complete."""
         # Parameter details is part of the interface but not currently used
