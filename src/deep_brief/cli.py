@@ -608,11 +608,11 @@ def _rubric_delete(repo: "RubricRepository", rubric_id: str) -> None:
 
 @app.command()
 def grade(
-    analysis_file: Path | None = typer.Argument(
-        None, help="Path to analysis JSON file"
+    input_file: Path | None = typer.Argument(
+        None, help="Path to video file (mp4, mov, avi, etc.) or analysis JSON file"
     ),
     video_path: Path | None = typer.Option(
-        None, "--video", "-v", help="Path to video file (if no analysis file)"
+        None, "--video", "-v", help="Path to video file (overrides positional argument)"
     ),
     rubric_type: str | None = typer.Option(
         None,
@@ -633,13 +633,14 @@ def grade(
 ) -> None:
     """Grade a video using LLM-based feedback.
 
-    Takes an analysis file (JSON) or video path, plus a rubric (default or custom),
+    Takes a video file or analysis JSON file, plus a rubric (default or custom),
     then generates detailed feedback using an LLM.
 
-    Either provide analysis_file OR video_path (video will be analyzed first).
+    Provide either a positional file (video or analysis.json) OR use --video option.
     Either specify --rubric-type (for defaults) OR --rubric-file (for custom).
 
     Example:
+        deep-brief grade video.mp4 --rubric-type academic
         deep-brief grade analysis.json --rubric-type academic
         deep-brief grade --video video.mp4 --rubric-type business --output reports/
         deep-brief grade analysis.json --rubric-file my-rubric.json
@@ -649,9 +650,24 @@ def grade(
     from deep_brief.analysis.default_rubrics import get_default_rubric
     from deep_brief.analysis.rubric_system import Rubric
 
-    # Validate inputs
-    if not analysis_file and not video_path:
-        console.print("[red]✗ Either analysis_file or --video must be provided[/red]")
+    # Determine actual file paths and types
+    analysis_file: Path | None = None
+    resolved_video_path: Path | None = None
+
+    # If --video option is explicitly provided, use it
+    if video_path:
+        resolved_video_path = video_path
+    elif input_file:
+        # Detect file type based on extension
+        if input_file.suffix.lower() in {".json", ".jsonl"}:
+            analysis_file = input_file
+        else:
+            # Assume it's a video file
+            resolved_video_path = input_file
+
+    # Validate that we have at least one input
+    if not analysis_file and not resolved_video_path:
+        console.print("[red]✗ Please provide a video file or analysis JSON file[/red]")
         raise typer.Exit(1)
 
     if not rubric_type and not rubric_file:
@@ -704,18 +720,18 @@ def grade(
         except Exception as e:
             console.print(f"[red]✗ Failed to load analysis file: {str(e)}[/red]")
             raise typer.Exit(1) from e
-    elif video_path:
-        if not video_path.exists():
-            console.print(f"[red]✗ Video file not found: {video_path}[/red]")
+    elif resolved_video_path:
+        if not resolved_video_path.exists():
+            console.print(f"[red]✗ Video file not found: {resolved_video_path}[/red]")
             raise typer.Exit(1)
-        console.print(f"[cyan]→[/cyan] Analyzing video: [bold]{video_path.name}[/bold]")
+        console.print(f"[cyan]→[/cyan] Analyzing video: [bold]{resolved_video_path.name}[/bold]")
         try:
             from deep_brief.core.pipeline_coordinator import (
                 PipelineCoordinator,
             )
 
             coordinator = PipelineCoordinator(get_config())
-            analysis_result = coordinator.analyze_video(str(video_path))
+            analysis_result = coordinator.analyze_video(str(resolved_video_path))
 
             if not analysis_result.success:
                 console.print(
@@ -740,7 +756,7 @@ def grade(
         if analysis_file:
             output_dir = analysis_file.parent / "feedback"
         else:
-            output_dir = video_path.parent / "feedback"  # type: ignore[union-attr]
+            output_dir = resolved_video_path.parent / "feedback"  # type: ignore[union-attr]
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
