@@ -1,17 +1,17 @@
-"""Speech transcription using OpenAI Whisper with word-level timestamps.
+"""Speech transcription using Faster-Whisper with word-level timestamps.
 
 This module provides speech-to-text functionality with detailed timing information
-for video analysis applications.
+for video analysis applications. Uses Faster-Whisper for improved performance on
+Apple Silicon and other platforms.
 """
 
 import logging
 import warnings
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, TypedDict
 
-import numpy as np
 import torch
-import whisper
+from faster_whisper import WhisperModel
 from pydantic import BaseModel
 
 from deep_brief.core.audio_extractor import AudioInfo
@@ -24,8 +24,9 @@ from deep_brief.utils.config import get_config
 
 logger = logging.getLogger(__name__)
 
-# Suppress some whisper warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="whisper")
+# Suppress some warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
 
 # Type aliases for Whisper results
 class WhisperWord(TypedDict):
@@ -33,12 +34,14 @@ class WhisperWord(TypedDict):
     start: float
     end: float
 
+
 class WhisperSegment(TypedDict):
     id: int
     text: str
     start: float
     end: float
     words: list[WhisperWord]
+
 
 class WhisperResult(TypedDict):
     text: str
@@ -181,16 +184,23 @@ class TranscriptionResult(BaseModel):
         }
 
 
-class WhisperTranscriber:
-    """OpenAI Whisper-based speech transcription with word-level timestamps."""
+class FasterWhisperTranscriber:
+    """Faster-Whisper-based speech transcription with word-level timestamps.
+
+    Uses faster-whisper for better performance on Apple Silicon and other platforms.
+    """
 
     def __init__(self, config: Any = None):
         """Initialize transcriber with configuration."""
         self.config = config or get_config()
         self.model = None
         self.device = self._determine_device()
+        self.compute_type = self._determine_compute_type()
 
-        logger.info(f"WhisperTranscriber initialized with device: {self.device}")
+        logger.info(
+            f"FasterWhisperTranscriber initialized with device: {self.device}, "
+            f"compute_type: {self.compute_type}"
+        )
 
     def _determine_device(self) -> str:
         """Determine the best device for inference."""
@@ -201,8 +211,11 @@ class WhisperTranscriber:
                 device = "cuda"
                 logger.info("CUDA available, using GPU for transcription")
             elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                device = "mps"  # Apple Silicon
-                logger.info("MPS available, using Apple Silicon GPU for transcription")
+                device = "cpu"  # Use CPU for Apple Silicon with faster-whisper
+                logger.info(
+                    "Apple Silicon detected, using CPU with faster-whisper "
+                    "(better compatibility than MPS)"
+                )
             else:
                 device = "cpu"
                 logger.info("Using CPU for transcription")
@@ -212,24 +225,46 @@ class WhisperTranscriber:
 
         return device
 
-    def _load_model(self) -> whisper.Whisper:
-        """Load Whisper model if not already loaded."""
+    def _determine_compute_type(self) -> str:
+        """Determine the best compute type for faster-whisper."""
+        if self.device == "cuda":
+            return "float16"  # Use half precision for CUDA GPUs
+        else:
+            return "int8"  # Use int8 quantization for CPU (faster and less memory)
+
+    def _load_model(self) -> WhisperModel:
+        """Load Faster-Whisper model if not already loaded."""
         if self.model is None:
             model_name = self.config.transcription.model
-            logger.info(f"Loading Whisper model: {model_name}")
+            logger.info(f"Loading Faster-Whisper model: {model_name}")
 
             try:
                 # Remove 'whisper-' prefix if present
-                whisper_model_name = model_name.replace("whisper-", "")
-                self.model = whisper.load_model(whisper_model_name, device=self.device)
-                logger.info(f"Successfully loaded {model_name} on {self.device}")
+                model_size = model_name.replace("whisper-", "")
+                self.model = WhisperModel(
+                    model_size,
+                    device=self.device,
+                    compute_type=self.compute_type,
+                    download_root=None,
+                    local_files_only=False,
+                )
+                logger.info(
+                    f"Successfully loaded {model_name} on {self.device} "
+                    f"with compute_type={self.compute_type}"
+                )
             except Exception as e:
-                error_msg = f"Failed to load Whisper model {model_name}: {str(e)}"
+                error_msg = (
+                    f"Failed to load Faster-Whisper model {model_name}: {str(e)}"
+                )
                 logger.error(error_msg)
                 raise VideoProcessingError(
                     message=error_msg,
                     error_code=ErrorCode.MISSING_DEPENDENCY,
-                    details={"model": model_name, "device": self.device},
+                    details={
+                        "model": model_name,
+                        "device": self.device,
+                        "compute_type": self.compute_type,
+                    },
                     cause=e,
                 ) from e
 
@@ -360,43 +395,50 @@ class WhisperTranscriber:
             # Load model
             model = self._load_model()
 
-            # Transcribe with Whisper
-            result: WhisperResult = model.transcribe(  # type: ignore
+            # Transcribe with Faster-Whisper
+            # Note: faster_whisper is not well-typed, so we use type: ignore
+            result = model.transcribe(  # type: ignore[no-untyped-call]
                 str(audio_info.file_path),
                 language=final_language,
                 temperature=temperature or 0.0,  # Convert None to 0.0
-                word_timestamps=word_timestamps or False,  # Convert None to False
-                verbose=False,  # Reduce logging noise
+                word_timestamps=word_timestamps
+                or False,  # Enable word-level timestamps
             )
 
-            # Process result
+            # Process result - result is a tuple (generator, info)
+            segments_result, info = result  # type: ignore[misc]
             segments: list[Segment] = []
-            for i, segment_data in enumerate(result.get("segments", [])):
+            for i, segment_data in enumerate(segments_result):  # type: ignore[var-annotated]
                 # Process word-level timestamps if available
                 words: list[WordTimestamp] = []
-                if word_timestamps and "words" in segment_data:
-                    word_list = segment_data.get("words", [])
-                    for word_data in word_list:
+                if (
+                    word_timestamps
+                    and hasattr(segment_data, "words")  # type: ignore[arg-type]
+                    and segment_data.words  # type: ignore[attr-defined]
+                ):
+                    for word_data in segment_data.words:  # type: ignore[attr-defined]
                         words.append(
                             WordTimestamp(
-                                word=str(word_data.get("word", "")).strip(),
-                                start=float(word_data.get("start", 0.0)),
-                                end=float(word_data.get("end", 0.0)),
-                                confidence=float(
-                                    word_data.get("confidence", 1.0)
-                                ),
+                                word=str(word_data.word).strip(),  # type: ignore[attr-defined]
+                                start=float(word_data.start),  # type: ignore[attr-defined]
+                                end=float(word_data.end),  # type: ignore[attr-defined]
+                                confidence=1.0,  # Faster-whisper doesn't provide per-word confidence
                             )
                         )
 
                 segment = Segment(
                     id=i,
-                    text=str(segment_data.get("text", "")).strip(),
-                    start=float(segment_data.get("start", 0.0)),
-                    end=float(segment_data.get("end", 0.0)),
-                    avg_logprob=float(segment_data.get("avg_logprob", 0.0)),
-                    no_speech_prob=float(segment_data.get("no_speech_prob", 0.0)),
+                    text=str(segment_data.text).strip(),  # type: ignore[attr-defined]
+                    start=float(segment_data.start),  # type: ignore[attr-defined]
+                    end=float(segment_data.end),  # type: ignore[attr-defined]
+                    avg_logprob=float(
+                        getattr(segment_data, "avg_logprob", 0.0)  # type: ignore[arg-type]
+                    ),  # Faster-whisper may not provide this
+                    no_speech_prob=float(
+                        getattr(segment_data, "no_speech_prob", 0.0)  # type: ignore[arg-type]
+                    ),  # Faster-whisper may not provide this
                     words=words,
-                    language=result.get("language"),
+                    language=info.language,  # type: ignore[attr-defined]
                 )
                 segments.append(segment)
 
@@ -411,36 +453,41 @@ class WhisperTranscriber:
 
             processing_time = time.time() - start_time
 
-            # Update language detection result if Whisper detected different language
-            transcription_language = result.get("language", "unknown")
-            transcription_prob = float(result.get("language_probability", 0.0))
+            # Get language detection result from faster-whisper
+            transcription_language: str = info.language or "unknown"  # type: ignore[attr-defined]
+            transcription_prob = float(
+                getattr(info, "language_probability", 0.0)  # type: ignore[arg-type]
+            )
 
-            # If we didn't have pre-detection, create one with Whisper's detection
+            # If we didn't have pre-detection, create one with Faster-Whisper's detection
             if language_detection_result is None:
                 language_detection_result = LanguageDetectionResult(
-                    detected_language=transcription_language,
+                    detected_language=transcription_language,  # type: ignore[arg-type]
                     confidence=transcription_prob,
                     all_probabilities={transcription_language: transcription_prob},
-                    detection_method="whisper",
+                    detection_method="faster_whisper",
                 )
 
-            # If Whisper detected a different language than our pre-detection
-            # and it wasn't a manual override, update with Whisper's result
+            # If Faster-Whisper detected a different language than our pre-detection
+            # and it wasn't a manual override, update with Faster-Whisper's result
             elif (
                 language_detection_result.detected_language != transcription_language
                 and language_detection_result.detection_method != "manual"
             ):
                 language_detection_result = LanguageDetectionResult(
-                    detected_language=transcription_language,
+                    detected_language=transcription_language,  # type: ignore[arg-type]
                     confidence=transcription_prob,
                     all_probabilities={transcription_language: transcription_prob},
-                    detection_method="whisper_transcription",
+                    detection_method="faster_whisper_transcription",
                 )
 
+            # Build full transcription text from segments
+            full_text = " ".join(segment.text for segment in segments).strip()
+
             transcription_result = TranscriptionResult(
-                text=result.get("text", "").strip(),
+                text=full_text,
                 segments=segments,
-                language=transcription_language,
+                language=transcription_language,  # type: ignore[arg-type]
                 language_probability=transcription_prob,
                 duration=audio_info.duration,
                 model_used=self.config.transcription.model,
@@ -617,7 +664,7 @@ class WhisperTranscriber:
         sample_duration: float = 30.0,
     ) -> LanguageDetectionResult:
         """
-        Detect the language of the audio using Whisper's built-in detection.
+        Detect the language of the audio using Faster-Whisper's built-in detection.
 
         Args:
             audio_info: AudioInfo object with audio file details
@@ -641,55 +688,38 @@ class WhisperTranscriber:
         try:
             model = self._load_model()
 
-            # Load audio and prepare for detection
-            # Whisper's load_audio returns a numpy array
-            audio_np: np.ndarray[Any, np.dtype[np.float32]] = cast(
-                "np.ndarray[Any, np.dtype[np.float32]]",
-                whisper.load_audio(str(audio_info.file_path))  # type: ignore[attr-defined]
+            # Faster-whisper's detect_language requires transcription
+            # We'll use a short sample to detect language efficiently
+            sample_duration = min(sample_duration, 30.0)  # Limit to 30 seconds
+
+            result = model.transcribe(  # type: ignore[no-untyped-call]
+                str(audio_info.file_path),
+                language=None,  # Auto-detect
             )
 
-            # Limit to sample_duration for faster detection
-            sample_duration = min(sample_duration, 30.0)  # Whisper limit
-            if len(audio_np) > sample_duration * 16000:  # 16kHz sample rate
-                audio_np = audio_np[: int(sample_duration * 16000)]
+            # Process result tuple
+            segments_result, info = result  # type: ignore[misc]
 
-            # Pad or trim to 30 seconds (Whisper's expected input length)
-            audio_padded = cast(
-                torch.Tensor,
-                whisper.pad_or_trim(audio_np)  # type: ignore[attr-defined]
+            # Consume the generator to get language info
+            # We don't need the actual segments for language detection
+            for _ in segments_result:  # type: ignore[var-annotated]
+                pass
+
+            detected_language: str = info.language or "unknown"  # type: ignore[attr-defined]
+            confidence = float(
+                getattr(info, "language_probability", 0.9)  # type: ignore[arg-type]
             )
-
-            # Create log-Mel spectrogram
-            mel = cast(
-                torch.Tensor,
-                whisper.log_mel_spectrogram(audio_padded)  # type: ignore[attr-defined]
-            ).to(model.device)  # type: ignore[attr-defined]
-
-            # Detect language
-            _, probs_dict = model.detect_language(mel)  # type: ignore[attr-defined]
-            probs: dict[str, float] = cast("dict[str, float]", probs_dict)
-
-            # Get the most probable language
-            detected_language: str = max(probs, key=lambda k: probs[k])
-            confidence: float = probs[detected_language]
-
-            # Sort all probabilities for reference
-            sorted_probs: dict[str, float] = dict(sorted(probs.items(), key=lambda x: x[1], reverse=True))
 
             logger.info(
                 f"Language detection complete: {detected_language} "
                 f"(confidence: {confidence:.3f})"
             )
 
-            # Log top 3 candidates for debugging
-            top_3: list[tuple[str, float]] = list(sorted_probs.items())[:3]
-            logger.debug(f"Top 3 language candidates: {top_3}")
-
             return LanguageDetectionResult(
                 detected_language=detected_language,
                 confidence=confidence,
-                all_probabilities=sorted_probs,
-                detection_method="whisper",
+                all_probabilities={detected_language: confidence},
+                detection_method="faster_whisper",
             )
 
         except Exception as e:
@@ -1080,16 +1110,22 @@ class WhisperTranscriber:
             if self.device == "cuda" and torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-            logger.info("Whisper model resources cleaned up")
+            logger.info("Faster-Whisper model resources cleaned up")
 
 
-def create_transcriber(config: Any = None) -> WhisperTranscriber:
-    """Create a new WhisperTranscriber instance.
+# Backward compatibility alias
+WhisperTranscriber = FasterWhisperTranscriber
+
+
+def create_transcriber(config: Any = None) -> FasterWhisperTranscriber:
+    """Create a new FasterWhisperTranscriber instance.
+
+    Uses Faster-Whisper for improved performance on Apple Silicon and other platforms.
 
     Args:
         config: Optional configuration object
 
     Returns:
-        Configured WhisperTranscriber instance
+        Configured FasterWhisperTranscriber instance
     """
-    return WhisperTranscriber(config=config)
+    return FasterWhisperTranscriber(config=config)

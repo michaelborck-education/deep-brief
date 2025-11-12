@@ -29,9 +29,9 @@ dependencies = [
     "ffmpeg-python>=0.2.0",
     
     # AI/ML models (CPU-only for development)
-    "openai-whisper>=20231117",
+    "faster-whisper>=0.10.0",
     "torch>=2.2.0",
-    "torchvision>=0.17.0", 
+    "torchvision>=0.17.0",
     "transformers>=4.36.0",
     "Pillow>=10.1.0",
     
