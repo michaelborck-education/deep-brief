@@ -763,7 +763,7 @@ class FrameExtractor:
     def _assess_frame_quality(self, frame: NDArray[np.uint8]) -> FrameQualityMetrics:
         """Assess the quality of a single frame."""
         # Convert to grayscale for analysis
-        gray = cast(NDArray[np.uint8], cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+        gray = cast("NDArray[np.uint8]", cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
 
         # 1. Blur Assessment (Laplacian variance)
         blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
@@ -925,8 +925,8 @@ class FrameExtractor:
     def _analyze_sharpness(self, gray: NDArray[np.uint8]) -> dict[str, Any]:
         """Analyze sharpness using multiple edge detection methods."""
         # Sobel edge detection
-        sobel_x = cast(NDArray[np.float64], cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3))
-        sobel_y = cast(NDArray[np.float64], cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3))
+        sobel_x = cast("NDArray[np.float64]", cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3))
+        sobel_y = cast("NDArray[np.float64]", cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3))
         sobel_magnitude: NDArray[np.float64] = np.sqrt(
             sobel_x**2 + sobel_y**2  # type: ignore[arg-type]
         )
@@ -1049,7 +1049,7 @@ class FrameExtractor:
         """Estimate noise levels in the image."""
         # Method 1: High-pass filter approach
         kernel = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float32)
-        laplacian = cast(NDArray[np.float32], cv2.filter2D(gray, cv2.CV_32F, kernel))
+        laplacian = cast("NDArray[np.float32]", cv2.filter2D(gray, cv2.CV_32F, kernel))
         noise_std: float = float(np.std(laplacian))
 
         # Method 2: Difference from Gaussian blur
@@ -1088,7 +1088,7 @@ class FrameExtractor:
         height: int
         width: int
         height, width = frame.shape[:2]
-        gray = cast(NDArray[np.uint8], cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+        gray = cast("NDArray[np.uint8]", cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
 
         # Rule of thirds analysis
         thirds_x = [width // 3, 2 * width // 3]
@@ -1102,7 +1102,7 @@ class FrameExtractor:
         for x in thirds_x:
             region = gray[:, max(0, x - line_width) : min(width, x + line_width)]
             sobel_result = cast(
-                NDArray[np.float64], cv2.Sobel(region, cv2.CV_64F, 1, 0, ksize=3)
+                "NDArray[np.float64]", cv2.Sobel(region, cv2.CV_64F, 1, 0, ksize=3)
             )
             thirds_regions.append(float(np.mean(sobel_result)))
 
@@ -1110,7 +1110,7 @@ class FrameExtractor:
         for y in thirds_y:
             region = gray[max(0, y - line_width) : min(height, y + line_width), :]
             sobel_result = cast(
-                NDArray[np.float64], cv2.Sobel(region, cv2.CV_64F, 0, 1, ksize=3)
+                "NDArray[np.float64]", cv2.Sobel(region, cv2.CV_64F, 0, 1, ksize=3)
             )
             thirds_regions.append(float(np.mean(sobel_result)))
 
@@ -1137,8 +1137,8 @@ class FrameExtractor:
 
         # Focus point detection (simplified)
         # Find the region with highest gradient magnitude
-        grad_x = cast(NDArray[np.float64], cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3))
-        grad_y = cast(NDArray[np.float64], cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3))
+        grad_x = cast("NDArray[np.float64]", cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3))
+        grad_y = cast("NDArray[np.float64]", cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3))
         grad_mag: NDArray[np.float64] = np.sqrt(grad_x**2 + grad_y**2)  # type: ignore[arg-type]
 
         # Find center of mass of high gradient regions
