@@ -1,5 +1,6 @@
 """Tests for configuration management."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -7,9 +8,16 @@ import yaml
 
 from deep_brief.utils.config import (
     DeepBriefConfig,
+    create_default_config_file,
+    export_config_to_env,
+    export_config_to_json,
+    get_config,
+    get_config_schema,
     load_config,
+    reset_config_to_defaults,
     save_config,
     setup_logging,
+    validate_config,
 )
 
 
@@ -189,3 +197,251 @@ def test_invalid_whisper_model() -> None:
     """Test that invalid Whisper models are rejected."""
     with pytest.raises(ValueError, match="Invalid model"):
         DeepBriefConfig(transcription={"model": "invalid-model"})
+
+
+class TestConfigExport:
+    """Tests for configuration export functionality."""
+
+    def test_export_to_json(self, temp_dir: Path) -> None:
+        """Test exporting configuration to JSON format."""
+        config = DeepBriefConfig(app_name="Test Export", debug=True)
+        export_path = temp_dir / "config.json"
+
+        export_config_to_json(config, export_path)
+
+        assert export_path.exists()
+        with open(export_path) as f:
+            exported_data = json.load(f)
+
+        assert exported_data["app_name"] == "Test Export"
+        assert exported_data["debug"] is True
+
+    def test_export_to_env(self, temp_dir: Path) -> None:
+        """Test exporting configuration to .env format."""
+        config = DeepBriefConfig(app_name="Test Env", debug=True)
+        export_path = temp_dir / ".env"
+
+        export_config_to_env(config, export_path)
+
+        assert export_path.exists()
+        content = export_path.read_text()
+
+        assert "DEEP_BRIEF__APP_NAME" in content
+        assert "Test Env" in content
+        assert "DEEP_BRIEF__DEBUG" in content
+        assert "true" in content
+
+    def test_export_env_handles_nested_config(self, temp_dir: Path) -> None:
+        """Test that env export properly flattens nested config."""
+        config = DeepBriefConfig(
+            processing={"max_video_size_mb": 250},
+            transcription={"model": "whisper-small"},
+        )
+        export_path = temp_dir / ".env"
+
+        export_config_to_env(config, export_path)
+
+        content = export_path.read_text()
+        assert "DEEP_BRIEF__PROCESSING__MAX_VIDEO_SIZE_MB" in content
+        assert "DEEP_BRIEF__TRANSCRIPTION__MODEL" in content
+
+    def test_export_env_handles_lists(self, temp_dir: Path) -> None:
+        """Test that env export properly handles list values."""
+        config = DeepBriefConfig(
+            processing={"supported_formats": ["mp4", "mov", "avi"]}
+        )
+        export_path = temp_dir / ".env"
+
+        export_config_to_env(config, export_path)
+
+        content = export_path.read_text()
+        assert "DEEP_BRIEF__PROCESSING__SUPPORTED_FORMATS" in content
+        assert "mp4,mov,avi" in content
+
+    def test_create_default_config_file(self, temp_dir: Path) -> None:
+        """Test creating a default configuration file."""
+        config_path = temp_dir / "default_config.yaml"
+
+        create_default_config_file(config_path)
+
+        assert config_path.exists()
+        loaded_config = load_config(config_path)
+        assert loaded_config.app_name == "DeepBrief"
+
+
+class TestConfigValidation:
+    """Tests for configuration validation."""
+
+    def test_validate_valid_config(self, temp_dir: Path) -> None:
+        """Test that valid config passes validation."""
+        config = DeepBriefConfig(
+            processing={"temp_dir": temp_dir / "temp"},
+            logging={"file_path": temp_dir / "logs" / "test.log"},
+        )
+
+        is_valid, errors = validate_config(config)
+
+        assert is_valid is True
+        assert len(errors) == 0
+
+    def test_validate_invalid_wpm_range(self) -> None:
+        """Test validation catches invalid WPM range."""
+        # Should fail at creation due to validator
+        with pytest.raises(ValueError, match="WPM min must be less than max"):
+            DeepBriefConfig(analysis={"target_wpm_range": [160, 140]})
+
+    def test_validate_weights_sum(self) -> None:
+        """Test validation of quality weights."""
+        # Valid: weights sum to 1.0
+        config = DeepBriefConfig(
+            visual_analysis={
+                "blur_weight": 0.4,
+                "contrast_weight": 0.3,
+                "brightness_weight": 0.3,
+            }
+        )
+        is_valid, errors = validate_config(config)
+        assert is_valid is True
+
+    def test_validate_empty_output_formats(self) -> None:
+        """Test validation catches empty output formats."""
+        # Should fail at creation due to validator
+        with pytest.raises(ValueError, match="List should have at least 1 item"):
+            DeepBriefConfig(output={"formats": []})
+
+
+class TestConfigSchema:
+    """Tests for configuration schema functionality."""
+
+    def test_get_config_schema(self) -> None:
+        """Test that config schema can be retrieved."""
+        schema = get_config_schema()
+
+        assert isinstance(schema, dict)
+        assert "properties" in schema
+        assert "app_name" in schema["properties"]
+        assert "processing" in schema["properties"]
+        assert "logging" in schema["properties"]
+
+    def test_schema_includes_all_sections(self) -> None:
+        """Test that schema includes all config sections."""
+        schema = get_config_schema()
+        properties = schema["properties"]
+
+        required_sections = [
+            "app_name",
+            "version",
+            "debug",
+            "processing",
+            "scene_detection",
+            "audio",
+            "transcription",
+            "analysis",
+            "visual_analysis",
+            "output",
+            "logging",
+        ]
+
+        for section in required_sections:
+            assert section in properties
+
+
+class TestConfigGlobalInstance:
+    """Tests for global config instance management."""
+
+    def test_get_config_returns_instance(self) -> None:
+        """Test that get_config returns a config instance."""
+        config = get_config()
+
+        assert isinstance(config, DeepBriefConfig)
+        assert config.app_name == "DeepBrief"
+
+    def test_get_config_caches_instance(self) -> None:
+        """Test that get_config caches the instance."""
+        config1 = get_config()
+        config2 = get_config()
+
+        # Should be the same instance
+        assert config1 is config2
+
+    def test_reset_config_to_defaults(self) -> None:
+        """Test resetting configuration to defaults."""
+        # Modify global config
+        config = get_config()
+        original_name = config.app_name
+
+        # Reset
+        reset_config = reset_config_to_defaults()
+
+        assert reset_config.app_name == "DeepBrief"
+        assert reset_config.debug is False
+
+
+class TestConfigIntegration:
+    """Integration tests for configuration system."""
+
+    def test_round_trip_save_and_load(self, temp_dir: Path) -> None:
+        """Test saving and loading configuration preserves values."""
+        original_config = DeepBriefConfig(
+            app_name="Integration Test",
+            debug=True,
+            processing={"max_video_size_mb": 300},
+            transcription={"model": "whisper-small"},
+        )
+
+        config_path = temp_dir / "integration_test.yaml"
+        save_config(original_config, config_path)
+        loaded_config = load_config(config_path)
+
+        assert loaded_config.app_name == "Integration Test"
+        assert loaded_config.debug is True
+        assert loaded_config.processing.max_video_size_mb == 300
+        assert loaded_config.transcription.model == "whisper-small"
+
+    def test_export_and_reimport_json(self, temp_dir: Path) -> None:
+        """Test exporting to JSON and reimporting."""
+        original_config = DeepBriefConfig(
+            app_name="JSON Test", debug=True, processing={"max_video_size_mb": 200}
+        )
+
+        # Export to JSON
+        json_path = temp_dir / "config.json"
+        export_config_to_json(original_config, json_path)
+
+        # Load JSON and create config from it
+        with open(json_path) as f:
+            data = json.load(f)
+
+        reimported_config = DeepBriefConfig(**data)
+
+        assert reimported_config.app_name == "JSON Test"
+        assert reimported_config.debug is True
+        assert reimported_config.processing.max_video_size_mb == 200
+
+    def test_yaml_and_json_format_consistency(self, temp_dir: Path) -> None:
+        """Test that YAML and JSON exports contain equivalent data."""
+        config = DeepBriefConfig(
+            app_name="Format Test",
+            debug=True,
+            processing={"max_video_size_mb": 250},
+        )
+
+        yaml_path = temp_dir / "config.yaml"
+        json_path = temp_dir / "config.json"
+
+        save_config(config, yaml_path)
+        export_config_to_json(config, json_path)
+
+        with open(yaml_path) as f:
+            yaml_data = yaml.safe_load(f)
+
+        with open(json_path) as f:
+            json_data = json.load(f)
+
+        # Both should have same basic structure
+        assert yaml_data["app_name"] == json_data["app_name"]
+        assert yaml_data["debug"] == json_data["debug"]
+        assert (
+            yaml_data["processing"]["max_video_size_mb"]
+            == json_data["processing"]["max_video_size_mb"]
+        )

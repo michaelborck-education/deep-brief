@@ -446,3 +446,156 @@ def reload_config(_config_path: Path | None = None) -> DeepBriefConfig:
     if hasattr(get_config, "_config"):
         delattr(get_config, "_config")
     return get_config()
+
+
+def export_config_to_json(config: DeepBriefConfig, output_path: Path) -> None:
+    """
+    Export configuration to JSON format.
+
+    Args:
+        config: Configuration object to export.
+        output_path: Path where to save the JSON file.
+    """
+    import json
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Convert to dict with proper serialization
+    config_dict = config.model_dump(mode="json")
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(config_dict, f, indent=2)
+
+    logging.getLogger(__name__).info(f"Configuration exported to {output_path}")
+
+
+def export_config_to_env(config: DeepBriefConfig, output_path: Path) -> None:
+    """
+    Export configuration to .env file format.
+
+    Args:
+        config: Configuration object to export.
+        output_path: Path where to save the .env file.
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def flatten_config(
+        data: dict[str, Any], prefix: str = "DEEP_BRIEF"
+    ) -> dict[str, str]:
+        """Flatten nested config to env var format."""
+        result: dict[str, str] = {}
+
+        for key, value in data.items():
+            env_key = f"{prefix}__{key.upper()}"
+
+            if isinstance(value, dict):
+                # Recursively flatten nested dicts
+                nested = flatten_config(value, env_key)
+                result.update(nested)
+            elif isinstance(value, list):
+                # Convert lists to comma-separated strings
+                result[env_key] = ",".join(str(v) for v in value)
+            elif isinstance(value, bool):
+                # Convert bools to string
+                result[env_key] = "true" if value else "false"
+            elif isinstance(value, Path):
+                # Convert Path to string
+                result[env_key] = str(value)
+            else:
+                result[env_key] = str(value)
+
+        return result
+
+    config_dict = config.model_dump(exclude={"version"}, mode="json")
+    env_vars = flatten_config(config_dict)
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("# DeepBrief Configuration\n")
+        f.write("# Auto-generated .env file\n\n")
+        for key, value in sorted(env_vars.items()):
+            f.write(f'{key}="{value}"\n')
+
+    logging.getLogger(__name__).info(f"Configuration exported to {output_path}")
+
+
+def create_default_config_file(output_path: Path) -> None:
+    """
+    Create a default configuration file at the specified path.
+
+    Args:
+        output_path: Path where to create the config file.
+    """
+    default_config = DeepBriefConfig()
+    save_config(default_config, output_path)
+    logging.getLogger(__name__).info(f"Default config created at {output_path}")
+
+
+def validate_config(config: DeepBriefConfig) -> tuple[bool, list[str]]:
+    """
+    Validate configuration and return validation results.
+
+    Args:
+        config: Configuration to validate.
+
+    Returns:
+        Tuple of (is_valid, list of error messages).
+    """
+    errors: list[str] = []
+
+    # Validate directory paths can be created
+    try:
+        temp_path = config.processing.temp_dir
+        if not temp_path.exists():
+            temp_path.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        errors.append(f"Cannot create temp directory: {e}")
+
+    # Validate logging directory can be created
+    try:
+        log_path = config.logging.file_path.parent
+        if not log_path.exists():
+            log_path.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        errors.append(f"Cannot create log directory: {e}")
+
+    # Validate WPM range
+    if config.analysis.target_wpm_range[0] >= config.analysis.target_wpm_range[1]:
+        errors.append("WPM range min must be less than max")
+
+    # Validate quality weights sum to approximately 1.0
+    weights_sum = (
+        config.visual_analysis.blur_weight
+        + config.visual_analysis.contrast_weight
+        + config.visual_analysis.brightness_weight
+    )
+    if abs(weights_sum - 1.0) > 0.01:
+        errors.append(f"Quality weights must sum to 1.0, got {weights_sum}")
+
+    # Validate output formats
+    if not config.output.formats:
+        errors.append("At least one output format must be specified")
+
+    return len(errors) == 0, errors
+
+
+def get_config_schema() -> dict[str, Any]:
+    """
+    Get JSON schema for the configuration.
+
+    Returns:
+        JSON schema for DeepBriefConfig.
+    """
+    return DeepBriefConfig.model_json_schema()  # type: ignore
+
+
+def reset_config_to_defaults() -> DeepBriefConfig:
+    """
+    Reset configuration to default values.
+
+    Returns:
+        New DeepBriefConfig with default values.
+    """
+    global _global_config
+    _global_config = DeepBriefConfig()
+    setup_logging(_global_config.logging)
+    return _global_config
