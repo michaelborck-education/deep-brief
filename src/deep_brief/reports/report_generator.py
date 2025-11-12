@@ -1,13 +1,46 @@
 """Report generator for creating structured analysis reports."""
 
+import csv
 import json
 import logging
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+class ReportFormat(str, Enum):
+    """Supported report export formats."""
+
+    JSON = "json"
+    CSV = "csv"
+    HTML = "html"
+    PLAIN_TEXT = "txt"
+
+
+class ReportCustomization(BaseModel):
+    """Configuration for report customization."""
+
+    include_video_metadata: bool = True
+    include_audio_metadata: bool = True
+    include_scenes: bool = True
+    include_frames: bool = True
+    include_transcription: bool = True
+    include_speech_metrics: bool = True
+    include_api_costs: bool = True
+    include_visual_analysis: bool = True
+    include_ocr: bool = True
+    include_object_detection: bool = True
+
+    # Frame detail level
+    include_frame_files: bool = False  # Don't include full file paths by default
+    include_detected_objects: bool = True
+
+    # Verbosity
+    max_frames_in_summary: int = 50  # Limit frames in summary reports
 
 
 class VideoMetadata(BaseModel):
@@ -357,3 +390,296 @@ class ReportGenerator:
             json.dump(report, f, indent=2)
 
         logger.info(f"JSON report saved: {output_path}")
+
+    def export_report(
+        self,
+        report: dict[str, Any],
+        output_path: Path,
+        format: ReportFormat = ReportFormat.JSON,
+        customization: ReportCustomization | None = None,
+    ) -> None:
+        """Export report in specified format with customization options.
+
+        Args:
+            report: The analysis report dictionary
+            output_path: Path where to save the exported report
+            format: Export format (json, csv, html, txt)
+            customization: Report customization options
+        """
+        if customization is None:
+            customization = ReportCustomization()
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if format == ReportFormat.JSON:
+            self._export_json(report, output_path, customization)
+        elif format == ReportFormat.CSV:
+            self._export_csv(report, output_path, customization)
+        elif format == ReportFormat.PLAIN_TEXT:
+            self._export_text(report, output_path, customization)
+        else:
+            raise ValueError(f"Unsupported export format: {format}")
+
+    def _export_json(
+        self,
+        report: dict[str, Any],
+        output_path: Path,
+        customization: ReportCustomization,
+    ) -> None:
+        """Export report as JSON with customization."""
+        filtered_report = self._filter_report(report, customization)
+        with open(output_path, "w") as f:
+            json.dump(filtered_report, f, indent=2)
+        logger.info(f"JSON report exported to {output_path}")
+
+    def _export_csv(
+        self,
+        report: dict[str, Any],
+        output_path: Path,
+        customization: ReportCustomization,
+    ) -> None:
+        """Export frame data as CSV for analysis in spreadsheet applications."""
+        frames = report.get("frames", [])
+        if not frames:
+            logger.warning("No frames to export as CSV")
+            return
+
+        # Determine CSV columns based on customization
+        fieldnames = ["frame_number", "timestamp", "scene_number"]
+
+        if customization.include_visual_analysis:
+            fieldnames.extend(["caption", "caption_confidence", "quality_score"])
+
+        if customization.include_ocr:
+            fieldnames.extend(["ocr_text", "ocr_confidence", "num_text_regions"])
+
+        if customization.include_object_detection and customization.include_detected_objects:
+            fieldnames.extend(["num_objects_detected", "detected_objects"])
+
+        # Limit frames if requested
+        frames_to_export = frames[: customization.max_frames_in_summary]
+
+        with open(output_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+
+            for frame in frames_to_export:
+                row: dict[str, Any] = {
+                    "frame_number": frame.get("frame_number"),
+                    "timestamp": frame.get("timestamp"),
+                    "scene_number": frame.get("scene_number"),
+                }
+
+                if customization.include_visual_analysis:
+                    row.update(
+                        {
+                            "caption": frame.get("caption", ""),
+                            "caption_confidence": frame.get("caption_confidence", ""),
+                            "quality_score": frame.get("quality_score", ""),
+                        }
+                    )
+
+                if customization.include_ocr:
+                    row.update(
+                        {
+                            "ocr_text": (frame.get("ocr_text", "") or "")[:100],  # Limit text
+                            "ocr_confidence": frame.get("ocr_confidence", ""),
+                            "num_text_regions": frame.get("num_text_regions", ""),
+                        }
+                    )
+
+                if customization.include_object_detection and customization.include_detected_objects:
+                    row.update(
+                        {
+                            "num_objects_detected": frame.get(
+                                "num_objects_detected", ""
+                            ),
+                            "detected_objects": ", ".join(
+                                frame.get("detected_objects", [])
+                            ),
+                        }
+                    )
+
+                writer.writerow(row)
+
+        logger.info(f"CSV report exported to {output_path}")
+
+    def _export_text(
+        self,
+        report: dict[str, Any],
+        output_path: Path,
+        customization: ReportCustomization,
+    ) -> None:
+        """Export report as plain text for easy reading."""
+        lines: list[str] = []
+
+        # Header
+        lines.append("=" * 80)
+        lines.append("VIDEO ANALYSIS REPORT")
+        lines.append("=" * 80)
+        lines.append("")
+
+        # Video metadata
+        if customization.include_video_metadata:
+            video = report.get("video", {})
+            lines.append("VIDEO INFORMATION")
+            lines.append("-" * 40)
+            lines.append(f"File: {video.get('file_path', 'Unknown')}")
+            lines.append(f"Duration: {video.get('duration', 0):.2f} seconds")
+            lines.append(
+                f"Resolution: {video.get('width', 0)}x{video.get('height', 0)}"
+            )
+            lines.append(f"FPS: {video.get('fps', 0):.2f}")
+            lines.append("")
+
+        # Speech metrics
+        if customization.include_speech_metrics:
+            metrics = report.get("speech_metrics")
+            if metrics:
+                lines.append("SPEECH METRICS")
+                lines.append("-" * 40)
+                lines.append(f"Total Words: {metrics.get('total_words', 0)}")
+                lines.append(f"Speaking Time: {metrics.get('total_speech_duration', 0):.2f}s")
+                lines.append(f"Speaking Rate: {metrics.get('speaking_rate_wpm', 0):.1f} WPM")
+                lines.append("")
+
+        # API costs
+        if customization.include_api_costs:
+            api_costs = report.get("api_cost_summary")
+            if api_costs:
+                lines.append("API USAGE COSTS")
+                lines.append("-" * 40)
+                lines.append(f"Provider: {api_costs.get('provider', 'Unknown')}")
+                lines.append(f"Model: {api_costs.get('model', 'Unknown')}")
+                lines.append(f"Total Tokens: {api_costs.get('total_tokens_used', 0)}")
+                lines.append(f"Total Cost: ${api_costs.get('total_cost_usd', 0):.4f}")
+                lines.append("")
+
+        # Transcription summary
+        if customization.include_transcription:
+            full_text = report.get("full_transcription_text", "")
+            if full_text:
+                lines.append("TRANSCRIPTION SUMMARY")
+                lines.append("-" * 40)
+                lines.append(
+                    full_text[: customization.max_frames_in_summary * 10]
+                    + "..."
+                )
+                lines.append("")
+
+        # Frame summary
+        if customization.include_frames:
+            frames = report.get("frames", [])
+            lines.append(f"FRAME ANALYSIS SUMMARY ({len(frames)} frames)")
+            lines.append("-" * 40)
+            for frame in frames[: customization.max_frames_in_summary]:
+                lines.append(f"Frame {frame.get('frame_number')}: {frame.get('timestamp'):.2f}s")
+                if customization.include_visual_analysis and frame.get("caption"):
+                    lines.append(f"  Caption: {frame.get('caption')}")
+                if customization.include_ocr and frame.get("ocr_text"):
+                    lines.append(f"  OCR: {frame.get('ocr_text')[:60]}...")
+            lines.append("")
+
+        lines.append("=" * 80)
+
+        with open(output_path, "w") as f:
+            f.write("\n".join(lines))
+
+        logger.info(f"Text report exported to {output_path}")
+
+    def _filter_report(
+        self,
+        report: dict[str, Any],
+        customization: ReportCustomization,
+    ) -> dict[str, Any]:
+        """Filter report based on customization options."""
+        filtered = dict(report)
+
+        # Remove unwanted sections
+        if not customization.include_audio_metadata:
+            filtered.pop("audio", None)
+
+        if not customization.include_scenes:
+            filtered.pop("scenes", None)
+            filtered["total_scenes"] = 0
+
+        if not customization.include_frames:
+            filtered.pop("frames", None)
+            filtered["total_frames"] = 0
+        else:
+            # Limit frames if requested
+            frames = filtered.get("frames", [])
+            if len(frames) > customization.max_frames_in_summary:
+                filtered["frames"] = frames[: customization.max_frames_in_summary]
+                filtered["total_frames"] = customization.max_frames_in_summary
+
+            # Remove file paths if not requested
+            if not customization.include_frame_files:
+                for frame in filtered.get("frames", []):
+                    frame.pop("file_path", None)
+
+            # Remove detected objects if not requested
+            if not customization.include_detected_objects:
+                for frame in filtered.get("frames", []):
+                    frame.pop("detected_objects", None)
+
+        if not customization.include_transcription:
+            filtered.pop("transcription_segments", None)
+            filtered["full_transcription_text"] = ""
+            filtered["language"] = None
+
+        if not customization.include_speech_metrics:
+            filtered.pop("speech_metrics", None)
+
+        if not customization.include_api_costs:
+            filtered.pop("api_cost_summary", None)
+
+        # Update analysis metadata flags
+        filtered["has_captions"] = (
+            customization.include_visual_analysis and filtered.get("has_captions", False)
+        )
+        filtered["has_ocr"] = (
+            customization.include_ocr and filtered.get("has_ocr", False)
+        )
+        filtered["has_object_detection"] = (
+            customization.include_object_detection
+            and filtered.get("has_object_detection", False)
+        )
+
+        return filtered
+
+    def export_to_formats(
+        self,
+        report: dict[str, Any],
+        output_dir: Path,
+        formats: list[ReportFormat] | None = None,
+        customization: ReportCustomization | None = None,
+    ) -> dict[str, Path]:
+        """Export report to multiple formats at once.
+
+        Args:
+            report: The analysis report dictionary
+            output_dir: Directory to save exported reports
+            formats: List of formats to export (default: JSON, CSV, TXT)
+            customization: Report customization options
+
+        Returns:
+            Dictionary mapping format names to output file paths
+        """
+        if formats is None:
+            formats = [ReportFormat.JSON, ReportFormat.CSV, ReportFormat.PLAIN_TEXT]
+
+        if customization is None:
+            customization = ReportCustomization()
+
+        output_paths: dict[str, Path] = {}
+
+        for fmt in formats:
+            ext = fmt.value
+            output_path = output_dir / f"report.{ext}"
+
+            self.export_report(report, output_path, fmt, customization)
+            output_paths[fmt.value] = output_path
+
+        logger.info(f"Report exported to {len(output_paths)} formats")
+        return output_paths
