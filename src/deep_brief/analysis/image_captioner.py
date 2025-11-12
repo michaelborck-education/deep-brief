@@ -312,6 +312,9 @@ class ImageCaptioner:
 
             return result
 
+        except VideoProcessingError as e:
+            # Re-raise VideoProcessingError as-is to preserve original error code
+            raise
         except Exception as e:
             processing_time = time.time() - start_time
             error_msg = (
