@@ -2,7 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -210,7 +210,7 @@ class TestImageCaptioner:
     @patch("deep_brief.analysis.image_captioner.Blip2Processor")
     @patch("deep_brief.analysis.image_captioner.Blip2ForConditionalGeneration")
     def test_load_model_failure(
-        self, mock_model_cls, mock_processor_cls, image_captioner
+        self, _mock_model_cls, mock_processor_cls, image_captioner
     ):
         """Test model loading failure."""
         mock_processor_cls.from_pretrained.side_effect = Exception("Model not found")
@@ -218,7 +218,7 @@ class TestImageCaptioner:
         with pytest.raises(VideoProcessingError) as exc_info:
             image_captioner._load_model()
 
-        assert exc_info.value.error_code == ErrorCode.MISSING_DEPENDENCY
+        assert exc_info.value.error_code == ErrorCode.MODEL_LOADING_FAILED
         assert "Failed to load image captioning model" in str(exc_info.value)
 
     def test_caption_image_disabled(self, mock_config_disabled):

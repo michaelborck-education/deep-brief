@@ -47,12 +47,11 @@ def load_env_file(env_path: Path | None = None) -> bool:
             with open(env_path) as f:
                 for line in f:
                     line = line.strip()
-                    if line and not line.startswith("#"):
-                        if "=" in line:
-                            key, value = line.split("=", 1)
-                            # Remove quotes if present
-                            value = value.strip().strip("\"'")
-                            os.environ[key.strip()] = value
+                    if line and not line.startswith("#") and "=" in line:
+                        key, value = line.split("=", 1)
+                        # Remove quotes if present
+                        value = value.strip().strip("\"'")
+                        os.environ[key.strip()] = value
             logger.debug(f"Loaded environment variables from {env_path}")
             return True
         except Exception as e:
@@ -92,30 +91,25 @@ def get_api_key(
         ...     # Fall back to local model
     """
     # 1. Try custom environment variable
-    if env_var_name:
-        if key := os.getenv(env_var_name):
-            logger.debug(f"Found API key in {env_var_name}")
-            return key
+    if env_var_name and (key := os.getenv(env_var_name)):
+        logger.debug(f"Found API key in {env_var_name}")
+        return key
 
     # 2. Try standard environment variable
     standard_var = STANDARD_ENV_VARS.get(provider)
-    if standard_var:
-        if key := os.getenv(standard_var):
-            logger.debug(f"Found API key in {standard_var}")
-            return key
+    if standard_var and (key := os.getenv(standard_var)):
+        logger.debug(f"Found API key in {standard_var}")
+        return key
 
     # 3. Try loading from .env file
-    if auto_load_env:
-        if load_env_file():
-            # Retry after loading .env
-            if env_var_name:
-                if key := os.getenv(env_var_name):
-                    logger.debug(f"Found API key in {env_var_name} (from .env)")
-                    return key
-            if standard_var:
-                if key := os.getenv(standard_var):
-                    logger.debug(f"Found API key in {standard_var} (from .env)")
-                    return key
+    if auto_load_env and load_env_file():
+        # Retry after loading .env
+        if env_var_name and (key := os.getenv(env_var_name)):
+            logger.debug(f"Found API key in {env_var_name} (from .env)")
+            return key
+        if standard_var and (key := os.getenv(standard_var)):
+            logger.debug(f"Found API key in {standard_var} (from .env)")
+            return key
 
     # 4. No key found
     logger.debug(f"No API key found for provider '{provider}'")

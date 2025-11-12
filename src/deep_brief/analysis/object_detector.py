@@ -17,13 +17,11 @@ from PIL import Image
 from pydantic import BaseModel
 
 from deep_brief.analysis.error_handling import (
-    ImageValidationError,
     ModelInitializationError,
     handle_corrupt_frame,
     validate_image,
     with_retry,
 )
-from deep_brief.core.exceptions import ErrorCode, VideoProcessingError
 from deep_brief.utils.config import get_config
 
 logger = logging.getLogger(__name__)
@@ -57,10 +55,10 @@ class DetectedObject(BaseModel):
     bbox: tuple[int, int, int, int]  # x1, y1, x2, y2
     center: tuple[float, float]  # Normalized center coordinates (0-1)
     area_ratio: float  # Ratio of object area to frame area
-    
+
     # Additional metadata
     attributes: dict[str, Any] = {}  # Element-specific attributes
-    
+
     def get_description(self) -> str:
         """Get human-readable description of the detected object."""
         return f"{self.element_type.value.replace('_', ' ').title()} (confidence: {self.confidence:.1%})"
@@ -74,17 +72,17 @@ class ObjectDetectionResult(BaseModel):
     processing_time: float
     frame_width: int
     frame_height: int
-    
+
     # Detection statistics
     element_counts: dict[str, int]  # Count by element type
     high_confidence_objects: int  # Objects with confidence > 0.8
     average_confidence: float
-    
+
     # Layout analysis
     layout_type: str  # e.g., "slide", "video", "mixed"
     has_presenter: bool
     dominant_element: str | None
-    
+
     def get_presentation_elements(self) -> list[DetectedObject]:
         """Get only presentation-specific elements (exclude people, etc.)."""
         presentation_types = {
@@ -98,18 +96,36 @@ class ObjectDetectionResult(BaseModel):
             PresentationElement.TITLE,
             PresentationElement.GRAPH,
         }
-        return [obj for obj in self.detected_objects if obj.element_type in presentation_types]
-    
+        return [
+            obj
+            for obj in self.detected_objects
+            if obj.element_type in presentation_types
+        ]
+
     def get_content_summary(self) -> dict[str, Any]:
         """Get summary of detected content."""
         presentation_elements = self.get_presentation_elements()
-        
+
         return {
             "total_elements": len(presentation_elements),
-            "has_slides": any(obj.element_type == PresentationElement.SLIDE for obj in self.detected_objects),
-            "has_charts": any(obj.element_type in [PresentationElement.CHART, PresentationElement.GRAPH] for obj in self.detected_objects),
-            "has_text": any(obj.element_type in [PresentationElement.TEXT_BLOCK, PresentationElement.TITLE] for obj in self.detected_objects),
-            "has_code": any(obj.element_type == PresentationElement.CODE_BLOCK for obj in self.detected_objects),
+            "has_slides": any(
+                obj.element_type == PresentationElement.SLIDE
+                for obj in self.detected_objects
+            ),
+            "has_charts": any(
+                obj.element_type
+                in [PresentationElement.CHART, PresentationElement.GRAPH]
+                for obj in self.detected_objects
+            ),
+            "has_text": any(
+                obj.element_type
+                in [PresentationElement.TEXT_BLOCK, PresentationElement.TITLE]
+                for obj in self.detected_objects
+            ),
+            "has_code": any(
+                obj.element_type == PresentationElement.CODE_BLOCK
+                for obj in self.detected_objects
+            ),
             "layout_type": self.layout_type,
             "dominant_element": self.dominant_element,
         }
@@ -124,24 +140,26 @@ class ObjectDetector:
         self.model = None
         self.device = None
         self._initialized = False
-        
+
         # Detection settings
-        self.confidence_threshold = self.config.visual_analysis.object_detection_confidence
+        self.confidence_threshold = (
+            self.config.visual_analysis.object_detection_confidence
+        )
         self.nms_threshold = 0.4  # Non-maximum suppression threshold
-        
+
         logger.info("ObjectDetector initialized")
-    
+
     def _ensure_initialized(self) -> None:
         """Ensure the model is loaded."""
         if not self._initialized:
             self._load_model()
-    
+
     @with_retry(max_attempts=2, delay=1.0)
     def _load_model(self) -> None:
         """Load the object detection model."""
         try:
             import torch
-            
+
             # Determine device
             if self.config.visual_analysis.object_detection_device == "auto":
                 if torch.cuda.is_available():
@@ -152,25 +170,27 @@ class ObjectDetector:
                     self.device = "cpu"
             else:
                 self.device = self.config.visual_analysis.object_detection_device
-            
+
             logger.info(f"Loading object detection model on device: {self.device}")
-            
+
             # For now, we'll use a lightweight approach with OpenCV's DNN module
             # This can be replaced with YOLOv5 or other models later
             self._initialized = True
-            
+
             logger.info("Object detection model loaded successfully")
-            
+
         except Exception as e:
             error_msg = f"Failed to load object detection model: {str(e)}"
             logger.error(error_msg)
             raise ModelInitializationError(
                 message=error_msg,
                 model_name="object_detector",
-                details={"device": self.device if hasattr(self, 'device') else "unknown"},
+                details={
+                    "device": self.device if hasattr(self, "device") else "unknown"
+                },
                 cause=e,
             ) from e
-    
+
     def detect_objects(
         self,
         image: Image.Image | np.ndarray | None = None,
@@ -178,19 +198,19 @@ class ObjectDetector:
     ) -> ObjectDetectionResult:
         """
         Detect presentation elements in an image.
-        
+
         Args:
             image: PIL Image or numpy array (RGB format)
             image_path: Path to image file (alternative to image)
-        
+
         Returns:
             ObjectDetectionResult with detected objects
-        
+
         Raises:
             ProcessingError: If detection fails
         """
         start_time = time.time()
-        
+
         try:
             # Load and validate image
             if image_path:
@@ -203,9 +223,11 @@ class ObjectDetector:
                 image_array = validate_image(image_array, "input image")
             else:
                 raise ValueError("Either image or image_path must be provided")
-            
+
             # Handle corrupt frames
-            image_array = handle_corrupt_frame(image_array, {"source": "object_detection"})
+            image_array = handle_corrupt_frame(
+                image_array, {"source": "object_detection"}
+            )
             if image_array is None:
                 logger.warning("Frame appears to be corrupted, returning empty results")
                 return ObjectDetectionResult(
@@ -221,40 +243,45 @@ class ObjectDetector:
                     has_presenter=False,
                     dominant_element=None,
                 )
-            
+
             height, width = image_array.shape[:2]
-            
+
             # For now, use heuristic-based detection
             # This will be replaced with proper ML model
             detected_objects = self._detect_with_heuristics(image_array)
-            
+
             # Calculate statistics
             element_counts = {}
             high_confidence_count = 0
             total_confidence = 0.0
-            
+
             for obj in detected_objects:
                 element_type = obj.element_type.value
                 element_counts[element_type] = element_counts.get(element_type, 0) + 1
-                
+
                 if obj.confidence > 0.8:
                     high_confidence_count += 1
-                
+
                 total_confidence += obj.confidence
-            
-            average_confidence = total_confidence / len(detected_objects) if detected_objects else 0.0
-            
+
+            average_confidence = (
+                total_confidence / len(detected_objects) if detected_objects else 0.0
+            )
+
             # Analyze layout
             layout_type = self._analyze_layout(detected_objects, width, height)
-            has_presenter = any(obj.element_type == PresentationElement.PERSON for obj in detected_objects)
-            
+            has_presenter = any(
+                obj.element_type == PresentationElement.PERSON
+                for obj in detected_objects
+            )
+
             # Find dominant element
             dominant_element = None
             if element_counts:
                 dominant_element = max(element_counts.items(), key=lambda x: x[1])[0]
-            
+
             processing_time = time.time() - start_time
-            
+
             return ObjectDetectionResult(
                 detected_objects=detected_objects,
                 total_objects=len(detected_objects),
@@ -268,11 +295,11 @@ class ObjectDetector:
                 has_presenter=has_presenter,
                 dominant_element=dominant_element,
             )
-            
+
         except Exception as e:
             error_msg = f"Object detection failed: {str(e)}"
             logger.error(error_msg)
-            
+
             # Return empty result instead of raising
             return ObjectDetectionResult(
                 detected_objects=[],
@@ -287,20 +314,20 @@ class ObjectDetector:
                 has_presenter=False,
                 dominant_element=None,
             )
-    
+
     def _detect_with_heuristics(self, image: np.ndarray) -> list[DetectedObject]:
         """
         Detect objects using heuristic methods.
-        
+
         This is a placeholder implementation that uses traditional CV techniques.
         In production, this would be replaced with a proper ML model.
         """
         detected_objects = []
         height, width = image.shape[:2]
-        
+
         # Convert to grayscale for analysis
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-        
+
         # 1. Detect text blocks using morphological operations
         text_blocks = self._detect_text_blocks(gray)
         for bbox in text_blocks:
@@ -308,13 +335,15 @@ class ObjectDetector:
             center_x = (x1 + x2) / 2 / width
             center_y = (y1 + y2) / 2 / height
             area_ratio = ((x2 - x1) * (y2 - y1)) / (width * height)
-            
+
             # Determine if it's a title based on position and size
             is_title = y1 < height * 0.2 and area_ratio > 0.1
-            
+
             detected_objects.append(
                 DetectedObject(
-                    element_type=PresentationElement.TITLE if is_title else PresentationElement.TEXT_BLOCK,
+                    element_type=PresentationElement.TITLE
+                    if is_title
+                    else PresentationElement.TEXT_BLOCK,
                     confidence=0.85 if is_title else 0.75,
                     bbox=bbox,
                     center=(center_x, center_y),
@@ -322,7 +351,7 @@ class ObjectDetector:
                     attributes={"is_title": is_title},
                 )
             )
-        
+
         # 2. Detect charts/graphs using edge detection
         charts = self._detect_charts(image)
         for bbox in charts:
@@ -330,7 +359,7 @@ class ObjectDetector:
             center_x = (x1 + x2) / 2 / width
             center_y = (y1 + y2) / 2 / height
             area_ratio = ((x2 - x1) * (y2 - y1)) / (width * height)
-            
+
             detected_objects.append(
                 DetectedObject(
                     element_type=PresentationElement.CHART,
@@ -341,7 +370,7 @@ class ObjectDetector:
                     attributes={"chart_type": "unknown"},
                 )
             )
-        
+
         # 3. Detect slide layout
         if self._is_slide_layout(image):
             # Add a slide detection covering most of the frame
@@ -349,14 +378,18 @@ class ObjectDetector:
                 DetectedObject(
                     element_type=PresentationElement.SLIDE,
                     confidence=0.9,
-                    bbox=(int(width * 0.05), int(height * 0.05), 
-                          int(width * 0.95), int(height * 0.95)),
+                    bbox=(
+                        int(width * 0.05),
+                        int(height * 0.05),
+                        int(width * 0.95),
+                        int(height * 0.95),
+                    ),
                     center=(0.5, 0.5),
                     area_ratio=0.9,
                     attributes={"slide_type": "standard"},
                 )
             )
-        
+
         # 4. Detect code blocks (monospace text areas)
         code_blocks = self._detect_code_blocks(gray)
         for bbox in code_blocks:
@@ -364,7 +397,7 @@ class ObjectDetector:
             center_x = (x1 + x2) / 2 / width
             center_y = (y1 + y2) / 2 / height
             area_ratio = ((x2 - x1) * (y2 - y1)) / (width * height)
-            
+
             detected_objects.append(
                 DetectedObject(
                     element_type=PresentationElement.CODE_BLOCK,
@@ -375,149 +408,177 @@ class ObjectDetector:
                     attributes={"has_syntax_highlighting": False},
                 )
             )
-        
+
         return detected_objects
-    
+
     def _detect_text_blocks(self, gray: np.ndarray) -> list[tuple[int, int, int, int]]:
         """Detect text blocks using morphological operations."""
         # Apply threshold to get binary image
         _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        
+
         # Apply morphological operations to merge text regions
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 5))
         dilated = cv2.dilate(binary, kernel, iterations=1)
-        
+
         # Find contours
-        contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
+        contours, _ = cv2.findContours(
+            dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+
         text_blocks = []
         height, width = gray.shape
         min_area = width * height * 0.01  # Minimum 1% of frame area
-        
+
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
             area = w * h
-            
+
             # Filter by area and aspect ratio
             if area > min_area and w > h * 0.5:  # Text is usually wider than tall
                 text_blocks.append((x, y, x + w, y + h))
-        
+
         return text_blocks
-    
+
     def _detect_charts(self, image: np.ndarray) -> list[tuple[int, int, int, int]]:
         """Detect charts and graphs using edge detection and line detection."""
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if len(image.shape) == 3 else image
-        
+        gray = (
+            cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if len(image.shape) == 3 else image
+        )
+
         # Edge detection
         edges = cv2.Canny(gray, 50, 150)
-        
+
         # Line detection
-        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, minLineLength=30, maxLineGap=10)
-        
+        lines = cv2.HoughLinesP(
+            edges, 1, np.pi / 180, threshold=50, minLineLength=30, maxLineGap=10
+        )
+
         if lines is None:
             return []
-        
+
         # Group lines into potential chart regions
         # This is a simplified approach - in practice, would use more sophisticated methods
         charts = []
         height, width = gray.shape
-        
+
         # Look for rectangular regions with many lines
         # (This is a placeholder - real implementation would be more complex)
         if len(lines) > 10:
             # Assume center region might be a chart
-            chart_bbox = (int(width * 0.2), int(height * 0.2), 
-                         int(width * 0.8), int(height * 0.8))
+            chart_bbox = (
+                int(width * 0.2),
+                int(height * 0.2),
+                int(width * 0.8),
+                int(height * 0.8),
+            )
             charts.append(chart_bbox)
-        
+
         return charts
-    
+
     def _detect_code_blocks(self, gray: np.ndarray) -> list[tuple[int, int, int, int]]:
         """Detect code blocks (areas with monospace text patterns)."""
         # Look for regions with consistent horizontal lines (code indentation)
         # This is a simplified heuristic
-        
+
         # Apply edge detection to find text regions
         edges = cv2.Canny(gray, 50, 150)
-        
+
         # Look for rectangular regions with regular patterns
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 3))
         dilated = cv2.dilate(edges, kernel, iterations=1)
-        
-        contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
+
+        contours, _ = cv2.findContours(
+            dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+
         code_blocks = []
         height, width = gray.shape
         min_area = width * height * 0.05  # Minimum 5% of frame area
-        
+
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
             area = w * h
-            
+
             # Code blocks are usually rectangular with specific aspect ratios
             if area > min_area and h > 50 and w > h * 1.5:
                 code_blocks.append((x, y, x + w, y + h))
-        
+
         return code_blocks
-    
+
     def _is_slide_layout(self, image: np.ndarray) -> bool:
         """Determine if the image has a typical slide layout."""
         height, width = image.shape[:2]
-        
+
         # Convert to grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if len(image.shape) == 3 else image
-        
+        gray = (
+            cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if len(image.shape) == 3 else image
+        )
+
         # Check for consistent background (slides usually have uniform backgrounds)
         # Calculate standard deviation of pixel values
         std_dev = np.std(gray)
-        
+
         # Check edges - slides usually have clear borders
         edges = cv2.Canny(gray, 50, 150)
         edge_density = np.sum(edges > 0) / edges.size
-        
+
         # Slides typically have:
         # - Low overall standard deviation (uniform background)
         # - Low edge density (not too busy)
         # - Rectangular aspect ratio close to 16:9 or 4:3
         aspect_ratio = width / height
-        is_standard_aspect = abs(aspect_ratio - 16/9) < 0.2 or abs(aspect_ratio - 4/3) < 0.2
-        
+        is_standard_aspect = (
+            abs(aspect_ratio - 16 / 9) < 0.2 or abs(aspect_ratio - 4 / 3) < 0.2
+        )
+
         return std_dev < 60 and edge_density < 0.1 and is_standard_aspect
-    
-    def _analyze_layout(self, objects: list[DetectedObject], width: int, height: int) -> str:
+
+    def _analyze_layout(
+        self, objects: list[DetectedObject], _width: int, _height: int
+    ) -> str:
         """Analyze the overall layout type based on detected objects."""
         if not objects:
             return "empty"
-        
+
         # Check for slide
-        has_slide = any(obj.element_type == PresentationElement.SLIDE for obj in objects)
+        has_slide = any(
+            obj.element_type == PresentationElement.SLIDE for obj in objects
+        )
         if has_slide:
             return "slide"
-        
+
         # Check for video presentation (person + content)
-        has_person = any(obj.element_type == PresentationElement.PERSON for obj in objects)
-        has_content = any(obj.element_type in [
-            PresentationElement.TEXT_BLOCK,
-            PresentationElement.CHART,
-            PresentationElement.DIAGRAM,
-        ] for obj in objects)
-        
+        has_person = any(
+            obj.element_type == PresentationElement.PERSON for obj in objects
+        )
+        has_content = any(
+            obj.element_type
+            in [
+                PresentationElement.TEXT_BLOCK,
+                PresentationElement.CHART,
+                PresentationElement.DIAGRAM,
+            ]
+            for obj in objects
+        )
+
         if has_person and has_content:
             return "video_presentation"
         elif has_person:
             return "video"
-        
+
         # Check for whiteboard
-        has_whiteboard = any(obj.element_type == PresentationElement.WHITEBOARD for obj in objects)
+        has_whiteboard = any(
+            obj.element_type == PresentationElement.WHITEBOARD for obj in objects
+        )
         if has_whiteboard:
             return "whiteboard"
-        
+
         # Default to document if we have text/charts
         if has_content:
             return "document"
-        
+
         return "unknown"
-    
+
     def cleanup(self):
         """Clean up model resources."""
         self.model = None
@@ -527,10 +588,10 @@ class ObjectDetector:
 
 def create_object_detector(config: Any = None) -> ObjectDetector:
     """Create a new ObjectDetector instance.
-    
+
     Args:
         config: Optional configuration object
-    
+
     Returns:
         Configured ObjectDetector instance
     """

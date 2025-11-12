@@ -1211,7 +1211,7 @@ class TestFillerWordDetection:
         assert hasattr(result.overall_metrics, "filler_word_rate")
         assert hasattr(result.overall_metrics, "most_common_filler_words")
 
-    def test_filler_word_filtering_methods(self, speech_analyzer):
+    def test_filler_word_filtering_methods(self, _speech_analyzer):
         """Test scene filtering by filler word metrics."""
         scene_metrics = [
             SceneSpeechMetrics(
@@ -1553,7 +1553,7 @@ class TestSilenceDetection:
         assert hasattr(result.overall_metrics, "longest_silence_overall")
         assert hasattr(result.overall_metrics, "total_silence_segments")
 
-    def test_silence_filtering_methods(self, speech_analyzer):
+    def test_silence_filtering_methods(self, _speech_analyzer):
         """Test scene filtering by silence metrics."""
         scene_metrics = [
             SceneSpeechMetrics(
@@ -1906,7 +1906,7 @@ class TestSentimentAnalysis:
         assert hasattr(result.overall_metrics, "emotional_intensity")
         assert hasattr(result.overall_metrics, "total_emotional_keywords")
 
-    def test_sentiment_filtering_methods(self, speech_analyzer):
+    def test_sentiment_filtering_methods(self, _speech_analyzer):
         """Test scene filtering by sentiment metrics."""
         scene_metrics = [
             SceneSpeechMetrics(
@@ -2267,7 +2267,7 @@ class TestQualityAssessment:
         assert confidence_issues[0]["issue"] == "no_words"
         assert confidence_issues[0]["severity"] == "critical"
 
-    def test_quality_filtering_methods(self, speech_analyzer):
+    def test_quality_filtering_methods(self, _speech_analyzer):
         """Test quality filtering methods in SpeechAnalysisResult."""
         scene_metrics = [
             SceneSpeechMetrics(

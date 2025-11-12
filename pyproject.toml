@@ -66,6 +66,11 @@ dev = [
     "ruff>=0.1.6",
     "basedpyright>=1.8.0",
     "pre-commit>=3.5.0",
+    # Type stubs for better type checking
+    "types-Pillow>=10.2.0",
+    "types-PyYAML>=6.0.12",
+    "types-setuptools>=80.9.0",
+    "types-requests>=2.31.0",
 ]
 build = [
     "build>=1.0.0",
@@ -131,6 +136,7 @@ line-ending = "auto"
 [tool.basedpyright]
 include = ["src"]
 exclude = ["tests"]
+stubPath = "stubs"
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.11"
@@ -142,6 +148,7 @@ reportUnusedClass = true
 reportUnusedFunction = true
 reportUnusedVariable = true
 reportDuplicateImport = true
+reportUnknownMemberType = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

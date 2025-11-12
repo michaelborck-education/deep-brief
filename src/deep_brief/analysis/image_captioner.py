@@ -10,15 +10,16 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 from PIL import Image
 from pydantic import BaseModel
 from transformers import (
-    AutoProcessor,
-    BlipForConditionalGeneration,
-    BlipProcessor,
-    Blip2ForConditionalGeneration,
-    Blip2Processor,
+    AutoProcessor,  # type: ignore
+    Blip2ForConditionalGeneration,  # type: ignore
+    Blip2Processor,  # type: ignore
+    BlipForConditionalGeneration,  # type: ignore
+    BlipProcessor,  # type: ignore
 )
 
 from deep_brief.analysis.error_handling import (
@@ -43,6 +44,7 @@ class CaptionResult(BaseModel):
     processing_time: float  # Time taken for captioning (seconds)
     model_used: str
     tokens_generated: int
+    cost_estimate: float | None = None  # Cost in USD (for API calls)
     alternative_captions: list[str] = []  # Multiple caption candidates
 
 
@@ -418,7 +420,7 @@ class ImageCaptioner:
                 prompts[i : i + batch_size] if prompts else [None] * len(batch_images)
             )
 
-            for image, prompt in zip(batch_images, batch_prompts):
+            for image, prompt in zip(batch_images, batch_prompts, strict=True):
                 try:
                     if isinstance(image, Path):
                         result = self.caption_image(
@@ -488,23 +490,21 @@ class ImageCaptioner:
         Returns:
             CaptionResult with generated caption
         """
-        import time
-
-        start_time = time.time()
-
         # Lazy initialization of API captioner
         if self.api_captioner is None:
             try:
                 from deep_brief.analysis.api_image_captioner import APIImageCaptioner
 
                 self.api_captioner = APIImageCaptioner(config=self.config)
-                logger.info(f"Initialized API captioner: {self.config.visual_analysis.api_provider}")
+                logger.info(
+                    f"Initialized API captioner: {self.config.visual_analysis.api_provider}"
+                )
             except Exception as e:
                 logger.error(f"Failed to initialize API captioner: {e}")
                 raise VideoProcessingError(
                     message=f"API captioner initialization failed: {e}",
                     error_code=ErrorCode.FRAME_EXTRACTION_FAILED,
-                )
+                ) from e
 
         # Prepare image for API
         if image_path:
@@ -514,6 +514,7 @@ class ImageCaptioner:
         elif image_array is not None:
             # Convert numpy array to PIL Image
             import numpy as np
+
             if isinstance(image_array, np.ndarray):
                 # Convert BGR to RGB if needed
                 if len(image_array.shape) == 3 and image_array.shape[2] == 3:
@@ -535,6 +536,7 @@ class ImageCaptioner:
                 processing_time=api_result.processing_time,
                 model_used=f"{api_result.provider}:{api_result.model}",
                 tokens_generated=api_result.tokens_used or 0,
+                cost_estimate=api_result.cost_estimate,
                 alternative_captions=[],
             )
 
@@ -543,8 +545,7 @@ class ImageCaptioner:
             raise VideoProcessingError(
                 message=f"API captioning failed: {e}",
                 error_code=ErrorCode.FRAME_EXTRACTION_FAILED,
-                cause=e,
-            )
+            ) from e
 
 
 def create_image_captioner(config: Any = None) -> ImageCaptioner:

@@ -7,8 +7,9 @@ OCR, and object detection.
 
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 from pydantic import BaseModel
@@ -16,11 +17,10 @@ from pydantic import BaseModel
 from deep_brief.analysis.visual_analyzer import (
     ExtractedFrame,
     FrameExtractor,
-    SceneFrameAnalysis,
     VisualAnalysisResult,
 )
 from deep_brief.core.exceptions import ErrorCode, VideoProcessingError
-from deep_brief.core.progress_tracker import ProgressTracker, ProgressUpdate
+from deep_brief.core.progress_tracker import ProgressTracker
 from deep_brief.core.scene_detector import SceneDetectionResult
 from deep_brief.utils.config import get_config
 
@@ -29,63 +29,72 @@ logger = logging.getLogger(__name__)
 
 class FrameAnalysisStep(BaseModel):
     """Configuration for a single analysis step."""
-    
+
     name: str
     enabled: bool
     weight: float = 1.0  # Weight for progress tracking
-    
+
     class Config:
         """Pydantic configuration."""
+
         arbitrary_types_allowed = True
 
 
 class PipelineMetrics(BaseModel):
     """Metrics collected during pipeline execution."""
-    
+
     total_frames_processed: int
     successful_frames: int
     failed_frames: int
-    
+
     # Timing metrics
     total_processing_time: float
     average_frame_time: float
-    
+
     # Step-specific metrics
     step_timings: dict[str, float]
     step_success_rates: dict[str, float]
-    
+
     # Quality metrics
     average_quality_score: float
     quality_distribution: dict[str, int]
-    
+
     # Analysis coverage
     frames_with_captions: int
     frames_with_ocr: int
     frames_with_objects: int
-    
+
     def get_summary(self) -> dict[str, Any]:
         """Get a summary of pipeline metrics."""
         return {
-            "success_rate": self.successful_frames / self.total_frames_processed if self.total_frames_processed > 0 else 0,
+            "success_rate": self.successful_frames / self.total_frames_processed
+            if self.total_frames_processed > 0
+            else 0,
             "average_processing_time": self.average_frame_time,
             "total_processing_time": self.total_processing_time,
             "quality_score": self.average_quality_score,
             "analysis_coverage": {
-                "captions": self.frames_with_captions / self.total_frames_processed if self.total_frames_processed > 0 else 0,
-                "ocr": self.frames_with_ocr / self.total_frames_processed if self.total_frames_processed > 0 else 0,
-                "objects": self.frames_with_objects / self.total_frames_processed if self.total_frames_processed > 0 else 0,
+                "captions": self.frames_with_captions / self.total_frames_processed
+                if self.total_frames_processed > 0
+                else 0,
+                "ocr": self.frames_with_ocr / self.total_frames_processed
+                if self.total_frames_processed > 0
+                else 0,
+                "objects": self.frames_with_objects / self.total_frames_processed
+                if self.total_frames_processed > 0
+                else 0,
             },
         }
 
 
 class FrameAnalysisPipeline:
     """Unified pipeline for analyzing video frames."""
-    
+
     def __init__(self, config: Any = None):
         """Initialize the frame analysis pipeline."""
         self.config = config or get_config()
         self.frame_extractor = FrameExtractor(config=self.config)
-        
+
         # Define analysis steps
         self.analysis_steps = [
             FrameAnalysisStep(
@@ -109,15 +118,17 @@ class FrameAnalysisPipeline:
                 weight=0.2,
             ),
         ]
-        
+
         # Calculate total weight for enabled steps
-        self.total_weight = sum(step.weight for step in self.analysis_steps if step.enabled)
-        
+        self.total_weight = sum(
+            step.weight for step in self.analysis_steps if step.enabled
+        )
+
         logger.info(
             f"FrameAnalysisPipeline initialized with steps: "
             f"{[step.name for step in self.analysis_steps if step.enabled]}"
         )
-    
+
     def analyze_video_frames(
         self,
         video_path: Path,
@@ -127,62 +138,68 @@ class FrameAnalysisPipeline:
     ) -> tuple[VisualAnalysisResult, PipelineMetrics]:
         """
         Analyze frames from video scenes through the complete pipeline.
-        
+
         Args:
             video_path: Path to the video file
             scene_result: Scene detection results
             output_dir: Optional directory to save extracted frames
             progress_callback: Optional callback for progress updates
-            
+
         Returns:
             Tuple of (VisualAnalysisResult, PipelineMetrics)
-            
+
         Raises:
             VideoProcessingError: If analysis fails
         """
         start_time = time.time()
-        
+
         # Create progress tracker
         progress_tracker = ProgressTracker()
-        
+
         # Create wrapper for the callback to match expected signature
         if progress_callback:
+
             def wrapper(update: Any):
                 # Extract progress and message from update if available
-                if hasattr(update, 'progress') and hasattr(update, 'current_step'):
+                if hasattr(update, "progress") and hasattr(update, "current_step"):
                     progress_callback(update.progress, update.current_step)
                 else:
                     progress_callback(0.0, "Processing...")
+
             progress_tracker.add_callback(wrapper)
-        
+
         try:
             # Extract and analyze frames
-            logger.info(f"Starting frame analysis for {len(scene_result.scenes)} scenes")
+            logger.info(
+                f"Starting frame analysis for {len(scene_result.scenes)} scenes"
+            )
             # Start tracking the operation
             progress_tracker.start_operation(
                 operation_id="frame_analysis",
                 operation_name="Frame Analysis Pipeline",
                 total_steps=len(scene_result.scenes),
             )
-            
+
             # Use frame extractor which already includes all analysis
             visual_result = self.frame_extractor.extract_frames_from_scenes(
                 video_path=video_path,
                 scene_result=scene_result,
                 output_dir=output_dir,
             )
-            
+
             # Collect metrics from the results
-            metrics = self._collect_pipeline_metrics(visual_result, time.time() - start_time)
-            
+            metrics = self._collect_pipeline_metrics(
+                visual_result, time.time() - start_time
+            )
+
             # Complete the operation
             progress_tracker.complete_operation(
                 operation_id="frame_analysis",
                 details={"frames_extracted": visual_result.total_frames_extracted},
             )
-            
+
             return visual_result, metrics
-            
+
         except Exception as e:
             error_msg = f"Frame analysis pipeline failed: {str(e)}"
             logger.error(error_msg)
@@ -190,14 +207,14 @@ class FrameAnalysisPipeline:
                 operation_id="frame_analysis",
                 error=error_msg,
             )
-            
+
             raise VideoProcessingError(
                 message=error_msg,
                 error_code=ErrorCode.FRAME_EXTRACTION_FAILED,
                 file_path=video_path,
                 cause=e,
             ) from e
-    
+
     def analyze_single_frame(
         self,
         frame: np.ndarray,
@@ -205,34 +222,36 @@ class FrameAnalysisPipeline:
     ) -> ExtractedFrame:
         """
         Analyze a single frame through the pipeline.
-        
+
         Args:
             frame: Frame as numpy array (BGR format)
             frame_info: Optional metadata about the frame
-            
+
         Returns:
             ExtractedFrame with all analysis results
         """
         frame_info = frame_info or {}
-        
+
         # Quality assessment (always performed)
         quality_metrics = self.frame_extractor._assess_frame_quality(frame)
-        
+
         # Image captioning
         caption_result = None
         if self.config.visual_analysis.enable_captioning:
             caption_result = self.frame_extractor._caption_frame(frame)
-        
+
         # OCR text extraction
         ocr_result = None
         if self.config.visual_analysis.enable_ocr:
             ocr_result = self.frame_extractor._extract_text_from_frame(frame)
-        
+
         # Object detection
         object_detection_result = None
         if self.config.visual_analysis.enable_object_detection:
-            object_detection_result = self.frame_extractor._detect_objects_in_frame(frame)
-        
+            object_detection_result = self.frame_extractor._detect_objects_in_frame(
+                frame
+            )
+
         # Create ExtractedFrame
         height, width = frame.shape[:2]
         extracted_frame = ExtractedFrame(
@@ -246,7 +265,7 @@ class FrameAnalysisPipeline:
             ocr_result=ocr_result,
             object_detection_result=object_detection_result,
         )
-        
+
         return extracted_frame
 
     def analyze_frame_from_path(
@@ -295,16 +314,16 @@ class FrameAnalysisPipeline:
     def get_enabled_analyses(self) -> list[str]:
         """Get list of enabled analysis types."""
         enabled = ["quality_assessment"]  # Always enabled
-        
+
         if self.config.visual_analysis.enable_captioning:
             enabled.append("image_captioning")
         if self.config.visual_analysis.enable_ocr:
             enabled.append("text_extraction")
         if self.config.visual_analysis.enable_object_detection:
             enabled.append("object_detection")
-        
+
         return enabled
-    
+
     def _collect_pipeline_metrics(
         self,
         visual_result: VisualAnalysisResult,
@@ -313,43 +332,60 @@ class FrameAnalysisPipeline:
         """Collect metrics from analysis results."""
         total_frames = visual_result.total_frames_extracted
         successful_frames = visual_result.total_frames_extracted
-        failed_frames = visual_result.total_frames_processed - visual_result.total_frames_extracted
-        
+        failed_frames = (
+            visual_result.total_frames_processed - visual_result.total_frames_extracted
+        )
+
         # Collect quality metrics
         quality_distribution = visual_result.overall_quality_distribution
         average_quality = visual_result.average_quality_score
-        
+
         # Count frames with different analysis types
         frames_with_captions = 0
         frames_with_ocr = 0
         frames_with_objects = 0
-        
+
         for scene_analysis in visual_result.scene_analyses:
             for frame in scene_analysis.frames:
                 if frame.caption_result and frame.caption_result.caption:
                     frames_with_captions += 1
                 if frame.ocr_result and frame.ocr_result.full_text:
                     frames_with_ocr += 1
-                if frame.object_detection_result and frame.object_detection_result.total_objects > 0:
+                if (
+                    frame.object_detection_result
+                    and frame.object_detection_result.total_objects > 0
+                ):
                     frames_with_objects += 1
-        
+
         # Estimate step timings (rough approximation)
         average_frame_time = total_time / total_frames if total_frames > 0 else 0
         step_timings = {
             "quality_assessment": average_frame_time * 0.1,
-            "image_captioning": average_frame_time * 0.4 if self.config.visual_analysis.enable_captioning else 0,
-            "text_extraction": average_frame_time * 0.3 if self.config.visual_analysis.enable_ocr else 0,
-            "object_detection": average_frame_time * 0.2 if self.config.visual_analysis.enable_object_detection else 0,
+            "image_captioning": average_frame_time * 0.4
+            if self.config.visual_analysis.enable_captioning
+            else 0,
+            "text_extraction": average_frame_time * 0.3
+            if self.config.visual_analysis.enable_ocr
+            else 0,
+            "object_detection": average_frame_time * 0.2
+            if self.config.visual_analysis.enable_object_detection
+            else 0,
         }
-        
+
         # Calculate success rates for each step
         step_success_rates = {
             "quality_assessment": 1.0,  # Always succeeds
-            "image_captioning": frames_with_captions / total_frames if total_frames > 0 else 0,
-            "text_extraction": frames_with_ocr / total_frames if total_frames > 0 else 0,
-            "object_detection": frames_with_objects / total_frames if total_frames > 0 else 0,
+            "image_captioning": frames_with_captions / total_frames
+            if total_frames > 0
+            else 0,
+            "text_extraction": frames_with_ocr / total_frames
+            if total_frames > 0
+            else 0,
+            "object_detection": frames_with_objects / total_frames
+            if total_frames > 0
+            else 0,
         }
-        
+
         return PipelineMetrics(
             total_frames_processed=visual_result.total_frames_processed,
             successful_frames=successful_frames,
@@ -364,7 +400,7 @@ class FrameAnalysisPipeline:
             frames_with_ocr=frames_with_ocr,
             frames_with_objects=frames_with_objects,
         )
-    
+
     def generate_analysis_summary(
         self,
         visual_result: VisualAnalysisResult,
@@ -372,49 +408,60 @@ class FrameAnalysisPipeline:
     ) -> dict[str, Any]:
         """
         Generate a comprehensive summary of the frame analysis.
-        
+
         Args:
             visual_result: Visual analysis results
             metrics: Pipeline execution metrics
-            
+
         Returns:
             Dictionary with analysis summary
         """
         # Get quality report
         quality_report = visual_result.generate_quality_report()
-        
+
         # Get metrics summary
         metrics_summary = metrics.get_summary()
-        
+
         # Collect key insights
         insights = []
-        
+
         # Quality insights
         if metrics.average_quality_score < 0.6:
             insights.append("Overall video quality is below optimal levels")
-        if quality_report["summary"]["scenes_with_issues"] > visual_result.total_scenes * 0.5:
+        if (
+            quality_report["summary"]["scenes_with_issues"]
+            > visual_result.total_scenes * 0.5
+        ):
             insights.append("More than half of the scenes have quality issues")
-        
+
         # Content insights
         if metrics.frames_with_ocr > 0:
             text_heavy_scenes = sum(
-                1 for scene in visual_result.scene_analyses
-                if any(frame.ocr_result and len(frame.ocr_result.text_regions) > 5 for frame in scene.frames)
+                1
+                for scene in visual_result.scene_analyses
+                if any(
+                    frame.ocr_result and len(frame.ocr_result.text_regions) > 5
+                    for frame in scene.frames
+                )
             )
             if text_heavy_scenes > visual_result.total_scenes * 0.3:
-                insights.append("Video contains significant text content (likely presentation slides)")
-        
+                insights.append(
+                    "Video contains significant text content (likely presentation slides)"
+                )
+
         if metrics.frames_with_objects > 0:
             presentation_scenes = sum(
-                1 for scene in visual_result.scene_analyses
+                1
+                for scene in visual_result.scene_analyses
                 if any(
-                    frame.object_detection_result and frame.object_detection_result.layout_type == "slide"
+                    frame.object_detection_result
+                    and frame.object_detection_result.layout_type == "slide"
                     for frame in scene.frames
                 )
             )
             if presentation_scenes > visual_result.total_scenes * 0.5:
                 insights.append("Video appears to be a presentation or lecture")
-        
+
         # Create summary
         summary = {
             "video_overview": {
@@ -426,7 +473,9 @@ class FrameAnalysisPipeline:
             "quality_summary": {
                 "average_score": metrics.average_quality_score,
                 "distribution": quality_report["quality_distribution"],
-                "top_issues": quality_report["top_recommendations"][:3] if quality_report["top_recommendations"] else [],
+                "top_issues": quality_report["top_recommendations"][:3]
+                if quality_report["top_recommendations"]
+                else [],
             },
             "content_analysis": {
                 "has_text_content": metrics.frames_with_ocr > 0,
@@ -442,13 +491,13 @@ class FrameAnalysisPipeline:
                 "enabled_analyses": self.get_enabled_analyses(),
             },
         }
-        
+
         return summary
-    
+
     def _determine_content_type(
         self,
         visual_result: VisualAnalysisResult,
-        metrics: PipelineMetrics,
+        _metrics: PipelineMetrics,
     ) -> str:
         """Determine the primary content type of the video."""
         # Count different layout types detected
@@ -458,13 +507,13 @@ class FrameAnalysisPipeline:
                 if frame.object_detection_result:
                     layout = frame.object_detection_result.layout_type
                     layout_counts[layout] = layout_counts.get(layout, 0) + 1
-        
+
         if not layout_counts:
             return "unknown"
-        
+
         # Find dominant layout type
         dominant_layout = max(layout_counts.items(), key=lambda x: x[1])[0]
-        
+
         # Map to content type
         content_type_mapping = {
             "slide": "presentation",
@@ -473,9 +522,9 @@ class FrameAnalysisPipeline:
             "whiteboard": "tutorial",
             "video": "general_video",
         }
-        
+
         return content_type_mapping.get(dominant_layout, "mixed_content")
-    
+
     def cleanup(self):
         """Clean up resources."""
         if self.frame_extractor:
@@ -486,10 +535,10 @@ class FrameAnalysisPipeline:
 def create_frame_analysis_pipeline(config: Any = None) -> FrameAnalysisPipeline:
     """
     Create a new FrameAnalysisPipeline instance.
-    
+
     Args:
         config: Optional configuration object
-        
+
     Returns:
         Configured FrameAnalysisPipeline instance
     """

@@ -4,6 +4,7 @@ import logging
 import sys
 import time
 from pathlib import Path
+from typing import cast
 
 import typer
 from rich.console import Console
@@ -11,7 +12,7 @@ from rich.panel import Panel
 
 from deep_brief.core.exceptions import VideoProcessingError
 from deep_brief.core.pipeline_coordinator import PipelineCoordinator
-from deep_brief.utils.config import get_config, load_config
+from deep_brief.utils.config import DeepBriefConfig, get_config, load_config
 from deep_brief.utils.progress_display import CLIProgressTracker
 
 console = Console()
@@ -54,7 +55,9 @@ def analyze(
     If no video path is provided, launches the web interface.
     """
     # Load configuration
-    config = load_config(config_file) if config_file else get_config()
+    config = cast(
+        "DeepBriefConfig", load_config(config_file) if config_file else get_config()
+    )
 
     # Apply CLI overrides
     if use_api:
@@ -112,7 +115,7 @@ def analyze(
 def _analyze_video_cli(
     video_path: Path,
     output_dir: Path | None,
-    config: object,
+    config: DeepBriefConfig,
     config_file: Path | None,
     verbose: bool,
     logger: logging.Logger,
@@ -160,18 +163,18 @@ def _analyze_video_cli(
     # Show relevant config info in debug mode
     if verbose:
         console.print(
-            f"[dim]Max file size: {config.processing.max_video_size_mb}MB[/dim]"
+            f"[dim]Max file size: {config.processing.max_video_size_mb}MB[/dim]"  # type: ignore
         )
-        console.print(
-            f"[dim]Transcription model: {config.transcription.model}[/dim]"
-        )
+        console.print(f"[dim]Transcription model: {config.transcription.model}[/dim]")  # type: ignore
 
     logger.info(f"Starting analysis: {video_path}")
     console.print(f"[green]Analyzing video:[/green] {video_path}\n")
 
     # Initialize progress tracker and pipeline
-    progress_tracker = CLIProgressTracker()
-    pipeline = PipelineCoordinator(config=config, progress_tracker=None)
+    progress_tracker: CLIProgressTracker = CLIProgressTracker()
+    pipeline = PipelineCoordinator(
+        config=config, progress_tracker=progress_tracker
+    )  # Use CLI callbacks instead
 
     # Define workflow operations
     operations = [
@@ -274,7 +277,9 @@ def _analyze_video_cli(
         console.print("\n[bold]Analysis Summary:[/bold]")
         console.print(f"  Video: {video_path_obj.name}")
         console.print(f"  Duration: {result.video_info.duration:.1f}s")
-        console.print(f"  Resolution: {result.video_info.width}x{result.video_info.height}")
+        console.print(
+            f"  Resolution: {result.video_info.width}x{result.video_info.height}"
+        )
         console.print(f"  FPS: {result.video_info.fps:.1f}")
 
         if result.audio_info:
@@ -293,8 +298,27 @@ def _analyze_video_cli(
         if visual_analysis:
             console.print("  Visual analysis: ✓")
 
+        # Display API costs if available
+        if report_paths.get("json"):
+            import json
+
+            try:
+                with open(report_paths["json"]) as f:
+                    report_data = json.load(f)
+                api_cost = report_data.get("api_cost_summary")
+                if api_cost and api_cost.get("total_cost_usd", 0) > 0:
+                    cost = api_cost["total_cost_usd"]
+                    tokens = api_cost["total_tokens_used"]
+                    provider = api_cost.get("provider", "API")
+                    model = api_cost.get("model", "unknown")
+                    console.print(
+                        f"  API usage ({provider}/{model}): {tokens:,} tokens, ${cost:.4f}"
+                    )
+            except Exception as e:
+                logger.debug(f"Could not load API cost data: {e}")
+
         if report_paths:
-            console.print(f"  Reports: JSON + HTML")
+            console.print("  Reports: JSON + HTML")
 
         console.print(f"  Processing time: {processing_time:.1f}s\n")
 

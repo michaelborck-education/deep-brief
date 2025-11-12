@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +53,8 @@ class FrameReport(BaseModel):
     caption: str | None = None
     caption_confidence: float | None = None
     caption_model: str | None = None
+    caption_tokens: int | None = None  # Total tokens used for caption
+    caption_cost: float | None = None  # Cost in USD for caption
 
     # OCR
     ocr_text: str | None = None
@@ -89,6 +91,16 @@ class SpeechMetrics(BaseModel):
     average_confidence: float
 
 
+class APICostSummary(BaseModel):
+    """Summary of API usage costs."""
+
+    total_frames_processed: int = 0
+    total_tokens_used: int = 0
+    total_cost_usd: float = 0.0
+    provider: str | None = None
+    model: str | None = None
+
+
 class AnalysisReport(BaseModel):
     """Complete video analysis report."""
 
@@ -113,6 +125,9 @@ class AnalysisReport(BaseModel):
 
     # Speech metrics
     speech_metrics: SpeechMetrics | None = None
+
+    # API cost summary
+    api_cost_summary: APICostSummary | None = None
 
     # Analysis metadata
     has_transcription: bool = False
@@ -196,6 +211,8 @@ class ReportGenerator:
                 frame_report.caption = frame.caption_result.caption
                 frame_report.caption_confidence = frame.caption_result.confidence
                 frame_report.caption_model = frame.caption_result.model_used
+                frame_report.caption_tokens = frame.caption_result.tokens_generated
+                frame_report.caption_cost = frame.caption_result.cost_estimate
                 has_captions = True
 
             # Add OCR if available
@@ -212,7 +229,11 @@ class ReportGenerator:
                     frame.object_detection_result.detected_objects
                 )
                 frame_report.detected_objects = [
-                    str(obj.element_type.value if hasattr(obj.element_type, 'value') else obj.element_type)
+                    str(
+                        obj.element_type.value
+                        if hasattr(obj.element_type, "value")
+                        else obj.element_type
+                    )
                     for obj in frame.object_detection_result.detected_objects
                 ]
                 has_object_detection = True
@@ -266,6 +287,42 @@ class ReportGenerator:
                 average_confidence=getattr(overall, "average_confidence", 0.0),
             )
 
+        # Calculate API cost summary
+        api_cost_summary = None
+        total_tokens = 0
+        total_cost = 0.0
+        frames_with_cost = 0
+        provider = None
+        model = None
+
+        for frame_report in frame_reports:
+            if frame_report.caption_cost is not None and frame_report.caption_cost > 0:
+                total_cost += frame_report.caption_cost
+                frames_with_cost += 1
+            if frame_report.caption_tokens is not None:
+                total_tokens += frame_report.caption_tokens
+            # Extract provider and model from first frame with caption
+            if provider is None and frame_report.caption_model:
+                provider = (
+                    frame_report.caption_model.split(":")[0]
+                    if ":" in frame_report.caption_model
+                    else None
+                )
+                model = (
+                    frame_report.caption_model.split(":", 1)[1]
+                    if ":" in frame_report.caption_model
+                    else frame_report.caption_model
+                )
+
+        if frames_with_cost > 0:
+            api_cost_summary = APICostSummary(
+                total_frames_processed=frames_with_cost,
+                total_tokens_used=total_tokens,
+                total_cost_usd=total_cost,
+                provider=provider,
+                model=model,
+            )
+
         # Build final report
         report = AnalysisReport(
             video=video_metadata,
@@ -278,6 +335,7 @@ class ReportGenerator:
             full_transcription_text=full_text,
             language=language,
             speech_metrics=speech_metrics,
+            api_cost_summary=api_cost_summary,
             has_transcription=len(transcription_segments) > 0,
             has_visual_analysis=len(frame_reports) > 0,
             has_captions=has_captions,

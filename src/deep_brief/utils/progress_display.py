@@ -1,18 +1,18 @@
 """CLI progress display utilities for real-time workflow visualization."""
 
-from dataclasses import dataclass, field
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 from rich.console import Console
 from rich.progress import (
     BarColumn,
     Progress,
-    ProgressColumn,
-    Task,
     TextColumn,
     TimeRemainingColumn,
 )
-from rich.text import Text
+
+from deep_brief.core.progress_tracker import ProgressTracker
 
 console = Console()
 
@@ -34,12 +34,13 @@ class OperationProgress:
         return int((self.current_step / self.total_steps) * 100)
 
 
-class CLIProgressTracker:
+class CLIProgressTracker(ProgressTracker):
     """Tracks and displays progress for video analysis workflow."""
 
     def __init__(self):
         """Initialize progress tracker."""
-        self.operations: dict[str, OperationProgress] = {}
+        super().__init__()
+        self.cli_operations: dict[str, OperationProgress] = {}
         self.current_operation: str | None = None
         self.progress: Progress | None = None
         self.tasks: dict[str, int] = {}
@@ -54,7 +55,7 @@ class CLIProgressTracker:
             workflow_name: Name of the workflow
             operations: List of (op_id, op_name, weight) tuples
         """
-        self.operations = {}
+        self.cli_operations = {}
         self.tasks = {}
 
         # Display workflow header
@@ -69,47 +70,70 @@ class CLIProgressTracker:
             console=console,
         )
 
+        # Start the progress bar
+        self.progress.start()
+
         # Register operations
         for op_id, op_name, weight in operations:
-            self.operations[op_id] = OperationProgress(op_name, total_steps=weight)
+            self.cli_operations[op_id] = OperationProgress(op_name, total_steps=weight)
 
-    def start_operation(self, operation_id: str) -> None:
+    def start_operation(
+        self,
+        operation_id: str,
+        _operation_name: str | None = None,
+        _total_steps: int | None = None,
+        _details: dict | None = None,
+    ) -> None:
         """Mark an operation as started."""
         if not self.progress:
             return
 
         self.current_operation = operation_id
-        if operation_id in self.operations:
-            op = self.operations[operation_id]
+        if operation_id in self.cli_operations:
+            op = self.cli_operations[operation_id]
             if operation_id not in self.tasks:
                 task_id = self.progress.add_task(op.name, total=100)
                 self.tasks[operation_id] = task_id
 
     def update_progress(
-        self, progress: float, current_step: str | None = None
+        self,
+        operation_id: str,
+        progress: float,
+        current_step: str | None = None,
+        _current_step_number: int | None = None,
+        _details: dict[str, Any] | None = None,
     ) -> None:
         """
         Update current operation progress.
 
         Args:
+            operation_id: Operation ID (uses current if None)
             progress: Progress value (0.0 to 1.0)
             current_step: Optional description of current step
+            current_step_number: Optional step number
         """
-        if not self.progress or not self.current_operation:
+        if not self.progress:
             return
 
-        op_id = self.current_operation
-        if op_id in self.operations:
-            self.operations[op_id].update(progress)
+        # Use provided operation_id or current operation
+        op_id = operation_id or self.current_operation
+        if not op_id:
+            return
+
+        if op_id in self.cli_operations:
+            if progress is not None:
+                self.cli_operations[op_id].update(progress)
             task_id = self.tasks.get(op_id)
             if task_id is not None:
-                percentage = int(progress * 100)
-                desc = self.operations[op_id].name
+                percentage = int((progress or 0) * 100)
+                desc = self.cli_operations[op_id].name
                 if current_step:
                     desc = f"{desc} • {current_step}"
                 self.progress.update(task_id, completed=percentage, description=desc)
 
-    def complete_operation(self, operation_id: str) -> None:
+    def complete_operation(
+        self, operation_id: str, _details: dict[str, Any] | None = None
+    ) -> None:
         """Mark an operation as complete."""
         if not self.progress:
             return
@@ -117,6 +141,44 @@ class CLIProgressTracker:
         if operation_id in self.tasks:
             task_id = self.tasks[operation_id]
             self.progress.update(task_id, completed=100)
+
+    def fail_operation(
+        self, operation_id: str, _error: str, _details: dict[str, Any] | None = None
+    ) -> None:
+        """Mark an operation as failed."""
+        if not self.progress:
+            return
+
+        if operation_id in self.tasks:
+            task_id = self.tasks[operation_id]
+            op_name = self.cli_operations.get(operation_id)
+            desc = f"❌ {op_name.name if op_name else 'Operation'} failed"
+            self.progress.update(task_id, description=desc)
+
+    def create_sub_progress_callback(
+        self, operation_id: str, step_weight: float, step_name: str
+    ) -> Callable[[float], None]:
+        """
+        Create a sub-progress callback for a weighted operation step.
+
+        Args:
+            operation_id: ID of the parent operation
+            step_weight: Weight of this step (0.0-1.0)
+            step_name: Name of the step
+
+        Returns:
+            Callback function that accepts progress (0.0-1.0)
+        """
+
+        def callback(progress: float) -> None:
+            # Update with step name and weighted progress
+            self.update_progress(
+                operation_id=operation_id,
+                progress=progress * step_weight,
+                current_step=step_name,
+            )
+
+        return callback
 
     def complete_workflow(self) -> None:
         """Complete the workflow and display completion message."""

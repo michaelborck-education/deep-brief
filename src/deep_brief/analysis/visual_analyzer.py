@@ -15,7 +15,6 @@ from pydantic import BaseModel
 from deep_brief.analysis.error_handling import (
     ErrorRecoveryContext,
     handle_corrupt_frame,
-    safe_model_inference,
     validate_image,
 )
 from deep_brief.analysis.image_captioner import CaptionResult, ImageCaptioner
@@ -50,12 +49,12 @@ class FrameQualityMetrics(BaseModel):
     # Technical details
     histogram_metrics: dict[str, Any]  # Detailed histogram analysis
     sharpness_details: dict[str, Any]  # Edge detection details
-    
+
     # Additional quality metrics
     color_metrics: dict[str, Any]  # Color distribution and saturation
     noise_metrics: dict[str, Any]  # Noise level estimation
     composition_metrics: dict[str, Any]  # Rule of thirds, symmetry
-    
+
     # Quality report summary
     quality_report: dict[str, Any]  # Comprehensive quality report
 
@@ -76,7 +75,7 @@ class ExtractedFrame(BaseModel):
 
     # OCR results
     ocr_result: OCRResult | None = None
-    
+
     # Object detection results
     object_detection_result: ObjectDetectionResult | None = None
 
@@ -94,9 +93,11 @@ class ExtractedFrame(BaseModel):
             if self.caption_result
             else None,
             "ocr_result": self.ocr_result.model_dump() if self.ocr_result else None,
-            "object_detection_result": self.object_detection_result.model_dump() if self.object_detection_result else None,
+            "object_detection_result": self.object_detection_result.model_dump()
+            if self.object_detection_result
+            else None,
         }
-    
+
     def get_quality_summary(self) -> dict[str, Any]:
         """Get a summary of quality metrics for reporting."""
         return {
@@ -156,7 +157,7 @@ class SceneFrameAnalysis(BaseModel):
             "frames_filtered_by_quality": self.frames_filtered_by_quality,
             "extraction_success_rate": self.extraction_success_rate,
         }
-    
+
     def get_quality_report(self) -> dict[str, Any]:
         """Generate a quality report for this scene."""
         return {
@@ -168,11 +169,13 @@ class SceneFrameAnalysis(BaseModel):
                 "category": self._score_to_category(self.average_quality_score),
             },
             "quality_breakdown": self.quality_distribution,
-            "best_frame_timestamp": self.best_frame.timestamp if self.best_frame else None,
+            "best_frame_timestamp": self.best_frame.timestamp
+            if self.best_frame
+            else None,
             "issues": self._identify_quality_issues(),
             "recommendations": self._generate_recommendations(),
         }
-    
+
     def _score_to_category(self, score: float) -> str:
         """Convert quality score to category."""
         if score >= 0.8:
@@ -183,51 +186,67 @@ class SceneFrameAnalysis(BaseModel):
             return "fair"
         else:
             return "poor"
-    
+
     def _identify_quality_issues(self) -> list[str]:
         """Identify quality issues in the scene."""
-        issues = []
-        
+        issues: list[str] = []
+
         # Check for poor quality frames
-        poor_frames = self.quality_distribution.get("poor", 0)
+        poor_frames = int(self.quality_distribution.get("poor", 0) or 0)
         if poor_frames > 0:
             issues.append(f"{poor_frames} frame(s) with poor quality")
-        
+
         # Check for fair quality frames
-        fair_frames = self.quality_distribution.get("fair", 0)
+        fair_frames = int(self.quality_distribution.get("fair", 0) or 0)
         if fair_frames > self.total_frames_extracted * 0.5:
             issues.append("Majority of frames have only fair quality")
-        
+
         # Check average quality
         if self.average_quality_score < 0.4:
             issues.append("Overall scene quality is below acceptable threshold")
-        
+
         # Check extraction success rate
         if self.extraction_success_rate < 0.8:
-            issues.append(f"Low extraction success rate: {self.extraction_success_rate:.1%}")
-        
+            issues.append(
+                f"Low extraction success rate: {self.extraction_success_rate:.1%}"
+            )
+
         return issues
-    
+
     def _generate_recommendations(self) -> list[str]:
         """Generate recommendations based on quality analysis."""
-        recommendations = []
-        
+        recommendations: list[str] = []
+
         if self.average_quality_score < 0.6:
             recommendations.append("Consider improving video recording quality")
-        
+
         # Analyze specific quality issues from frames
         if self.frames:
-            blur_issues = sum(1 for f in self.frames if f.quality_metrics.blur_category in ["poor", "fair"])
-            contrast_issues = sum(1 for f in self.frames if f.quality_metrics.contrast_category in ["poor", "fair"])
-            brightness_issues = sum(1 for f in self.frames if f.quality_metrics.brightness_category in ["poor", "fair"])
-            
+            blur_issues = sum(
+                1
+                for f in self.frames
+                if f.quality_metrics.blur_category in ["poor", "fair"]
+            )
+            contrast_issues = sum(
+                1
+                for f in self.frames
+                if f.quality_metrics.contrast_category in ["poor", "fair"]
+            )
+            brightness_issues = sum(
+                1
+                for f in self.frames
+                if f.quality_metrics.brightness_category in ["poor", "fair"]
+            )
+
             if blur_issues > len(self.frames) * 0.5:
                 recommendations.append("Focus on camera stability to reduce blur")
             if contrast_issues > len(self.frames) * 0.5:
-                recommendations.append("Improve lighting contrast in recording environment")
+                recommendations.append(
+                    "Improve lighting contrast in recording environment"
+                )
             if brightness_issues > len(self.frames) * 0.5:
                 recommendations.append("Adjust lighting levels for better visibility")
-        
+
         return recommendations
 
 
@@ -262,14 +281,14 @@ class VisualAnalysisResult(BaseModel):
 
     def get_all_frames(self) -> list[ExtractedFrame]:
         """Get all extracted frames across all scenes."""
-        all_frames = []
+        all_frames: list[ExtractedFrame] = []
         for scene_analysis in self.scene_analyses:
             all_frames.extend(scene_analysis.frames)
         return all_frames
 
     def get_frames_by_quality(self, category: str) -> list[ExtractedFrame]:
         """Get all frames matching a specific quality category."""
-        matching_frames = []
+        matching_frames: list[ExtractedFrame] = []
         for scene_analysis in self.scene_analyses:
             matching_frames.extend(scene_analysis.get_frames_by_quality(category))
         return matching_frames
@@ -291,15 +310,17 @@ class VisualAnalysisResult(BaseModel):
             "extraction_method": self.extraction_method,
             "processing_time": self.processing_time,
         }
-    
+
     def generate_quality_report(self) -> dict[str, Any]:
         """Generate comprehensive quality report for the entire video."""
-        scene_reports = [analysis.get_quality_report() for analysis in self.scene_analyses]
-        
+        scene_reports = [
+            analysis.get_quality_report() for analysis in self.scene_analyses
+        ]
+
         # Calculate aggregate metrics
         total_issues = sum(len(report["issues"]) for report in scene_reports)
         scenes_with_issues = sum(1 for report in scene_reports if report["issues"])
-        
+
         # Generate overall recommendations
         all_recommendations = []
         recommendation_counts = {}
@@ -308,20 +329,20 @@ class VisualAnalysisResult(BaseModel):
                 recommendation_counts[rec] = recommendation_counts.get(rec, 0) + 1
                 if rec not in all_recommendations:
                     all_recommendations.append(rec)
-        
+
         # Sort recommendations by frequency
-        sorted_recommendations = sorted(
-            all_recommendations,
-            key=lambda x: recommendation_counts[x],
-            reverse=True
+        sorted_recommendations: list[str] = sorted(
+            all_recommendations, key=lambda x: recommendation_counts[x], reverse=True
         )[:5]  # Top 5 recommendations
-        
+
         return {
             "summary": {
                 "total_scenes": self.total_scenes,
                 "total_frames_analyzed": self.total_frames_extracted,
                 "overall_quality_score": self.average_quality_score,
-                "overall_quality_category": self._score_to_category(self.average_quality_score),
+                "overall_quality_category": self._score_to_category(
+                    self.average_quality_score
+                ),
                 "processing_success_rate": self.overall_success_rate,
                 "scenes_with_issues": scenes_with_issues,
                 "total_quality_issues": total_issues,
@@ -333,7 +354,9 @@ class VisualAnalysisResult(BaseModel):
                 "video_duration": self.video_duration,
                 "extraction_method": self.extraction_method,
                 "processing_time": self.processing_time,
-                "frames_per_scene": self.total_frames_extracted / self.total_scenes if self.total_scenes > 0 else 0,
+                "frames_per_scene": self.total_frames_extracted / self.total_scenes
+                if self.total_scenes > 0
+                else 0,
             },
             "best_frames": [
                 {
@@ -344,7 +367,7 @@ class VisualAnalysisResult(BaseModel):
                 for frame in self.best_frames_per_scene
             ],
         }
-    
+
     def _score_to_category(self, score: float) -> str:
         """Convert quality score to category."""
         if score >= 0.8:
@@ -558,15 +581,18 @@ class FrameExtractor:
                     f"Failed to read frame at {timestamp:.1f}s in scene {scene.scene_number}"
                 )
                 continue
-            
+
             # Validate and handle corrupt frames
             try:
                 frame = validate_image(frame, f"frame at {timestamp:.1f}s")
-                frame = handle_corrupt_frame(frame, {
-                    "timestamp": timestamp,
-                    "scene_number": scene.scene_number,
-                    "frame_number": frame_number
-                })
+                frame = handle_corrupt_frame(
+                    frame,
+                    {
+                        "timestamp": timestamp,
+                        "scene_number": scene.scene_number,
+                        "frame_number": frame_number,
+                    },
+                )
                 if frame is None:
                     logger.warning(
                         f"Corrupt frame detected at {timestamp:.1f}s in scene {scene.scene_number}, skipping"
@@ -579,7 +605,7 @@ class FrameExtractor:
             # Assess frame quality with error recovery
             with ErrorRecoveryContext(
                 f"quality assessment for frame at {timestamp:.1f}s",
-                suppress_errors=True
+                suppress_errors=True,
             ) as ctx:
                 quality_metrics = self._assess_frame_quality(frame)
                 if ctx.error:
@@ -601,7 +627,7 @@ class FrameExtractor:
             # Generate caption for frame with error recovery
             with ErrorRecoveryContext(
                 f"caption generation for frame at {timestamp:.1f}s",
-                suppress_errors=True
+                suppress_errors=True,
             ) as ctx:
                 caption_result = self._caption_frame(frame)
                 if ctx.error:
@@ -610,18 +636,16 @@ class FrameExtractor:
 
             # Perform OCR on frame with error recovery
             with ErrorRecoveryContext(
-                f"OCR for frame at {timestamp:.1f}s",
-                suppress_errors=True
+                f"OCR for frame at {timestamp:.1f}s", suppress_errors=True
             ) as ctx:
                 ocr_result = self._extract_text_from_frame(frame)
                 if ctx.error:
                     logger.warning(f"OCR failed: {ctx.error}")
                     ocr_result = None
-            
+
             # Perform object detection on frame with error recovery
             with ErrorRecoveryContext(
-                f"object detection for frame at {timestamp:.1f}s",
-                suppress_errors=True
+                f"object detection for frame at {timestamp:.1f}s", suppress_errors=True
             ) as ctx:
                 object_detection_result = self._detect_objects_in_frame(frame)
                 if ctx.error:
@@ -734,13 +758,13 @@ class FrameExtractor:
 
         # 5. Sharpness details using edge detection
         sharpness_details = self._analyze_sharpness(gray)
-        
+
         # 6. Color metrics analysis
         color_metrics = self._analyze_color_metrics(frame)
-        
+
         # 7. Noise metrics estimation
         noise_metrics = self._analyze_noise_metrics(gray)
-        
+
         # 8. Composition metrics
         composition_metrics = self._analyze_composition_metrics(frame)
 
@@ -751,15 +775,22 @@ class FrameExtractor:
         overall_quality_category = self._categorize_overall_quality(
             overall_quality_score
         )
-        
+
         # 10. Generate quality report
         quality_report = self._generate_frame_quality_report(
-            blur_score, blur_category,
-            contrast_score, contrast_category,
-            brightness_score, brightness_category,
-            overall_quality_score, overall_quality_category,
-            histogram_metrics, sharpness_details,
-            color_metrics, noise_metrics, composition_metrics
+            blur_score,
+            blur_category,
+            contrast_score,
+            contrast_category,
+            brightness_score,
+            brightness_category,
+            overall_quality_score,
+            overall_quality_category,
+            histogram_metrics,
+            sharpness_details,
+            color_metrics,
+            noise_metrics,
+            composition_metrics,
         )
 
         return FrameQualityMetrics(
@@ -931,16 +962,16 @@ class FrameExtractor:
             return "fair"
         else:
             return "poor"
-    
+
     def _analyze_color_metrics(self, frame: np.ndarray) -> dict[str, Any]:
         """Analyze color distribution and saturation metrics."""
         # Convert to HSV for saturation analysis
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         h, s, v = cv2.split(hsv)
-        
+
         # Color distribution in RGB
         b, g, r = cv2.split(frame)
-        
+
         # Calculate color metrics
         color_metrics = {
             "saturation": {
@@ -952,7 +983,9 @@ class FrameExtractor:
             "hue_distribution": {
                 "mean": float(h.mean()),
                 "std": float(h.std()),
-                "dominant_hue": int(np.argmax(cv2.calcHist([h], [0], None, [180], [0, 180]))),
+                "dominant_hue": int(
+                    np.argmax(cv2.calcHist([h], [0], None, [180], [0, 180]))
+                ),
             },
             "color_balance": {
                 "red_mean": float(r.mean()),
@@ -962,20 +995,20 @@ class FrameExtractor:
             },
             "color_diversity": float(np.std([r.std(), g.std(), b.std()])),
         }
-        
+
         return color_metrics
-    
+
     def _detect_color_cast(self, r_mean: float, g_mean: float, b_mean: float) -> str:
         """Detect if image has a color cast."""
         # Calculate ratios
         total = r_mean + g_mean + b_mean
         if total == 0:
             return "neutral"
-        
+
         r_ratio = r_mean / total
         g_ratio = g_mean / total
         b_ratio = b_mean / total
-        
+
         # Check for color cast
         if r_ratio > 0.4:
             return "red_cast"
@@ -985,32 +1018,32 @@ class FrameExtractor:
             return "blue_cast"
         else:
             return "neutral"
-    
+
     def _analyze_noise_metrics(self, gray: np.ndarray) -> dict[str, Any]:
         """Estimate noise levels in the image."""
         # Method 1: High-pass filter approach
         kernel = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float32)
         laplacian = cv2.filter2D(gray, cv2.CV_32F, kernel)
         noise_std = np.std(laplacian)
-        
+
         # Method 2: Difference from Gaussian blur
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         diff = gray.astype(np.float32) - blurred.astype(np.float32)
         noise_estimate = np.std(diff)
-        
+
         # Signal-to-noise ratio estimation
         signal_mean = np.mean(gray)
-        snr = signal_mean / noise_std if noise_std > 0 else float('inf')
-        
+        snr = signal_mean / noise_std if noise_std > 0 else float("inf")
+
         noise_metrics = {
             "noise_std_laplacian": float(noise_std),
             "noise_estimate_gaussian": float(noise_estimate),
-            "signal_to_noise_ratio": float(snr) if snr != float('inf') else 1000.0,
+            "signal_to_noise_ratio": float(snr) if snr != float("inf") else 1000.0,
             "noise_level": self._categorize_noise_level(noise_std),
         }
-        
+
         return noise_metrics
-    
+
     def _categorize_noise_level(self, noise_std: float) -> str:
         """Categorize noise level."""
         if noise_std < 5:
@@ -1023,49 +1056,57 @@ class FrameExtractor:
             return "high"
         else:
             return "very_high"
-    
+
     def _analyze_composition_metrics(self, frame: np.ndarray) -> dict[str, Any]:
         """Analyze frame composition including rule of thirds and symmetry."""
         height, width = frame.shape[:2]
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
+
         # Rule of thirds analysis
         thirds_x = [width // 3, 2 * width // 3]
         thirds_y = [height // 3, 2 * height // 3]
-        
+
         # Extract regions around rule of thirds lines
         line_width = max(3, int(min(width, height) * 0.01))
         thirds_regions = []
-        
+
         # Vertical lines
         for x in thirds_x:
-            region = gray[:, max(0, x - line_width):min(width, x + line_width)]
+            region = gray[:, max(0, x - line_width) : min(width, x + line_width)]
             thirds_regions.append(np.mean(cv2.Sobel(region, cv2.CV_64F, 1, 0, ksize=3)))
-        
+
         # Horizontal lines
         for y in thirds_y:
-            region = gray[max(0, y - line_width):min(height, y + line_width), :]
+            region = gray[max(0, y - line_width) : min(height, y + line_width), :]
             thirds_regions.append(np.mean(cv2.Sobel(region, cv2.CV_64F, 0, 1, ksize=3)))
-        
+
         # Symmetry analysis
         # Vertical symmetry
-        left_half = gray[:, :width // 2]
-        right_half = cv2.flip(gray[:, width // 2:], 1)
+        left_half = gray[:, : width // 2]
+        right_half = cv2.flip(gray[:, width // 2 :], 1)
         min_width = min(left_half.shape[1], right_half.shape[1])
-        vertical_symmetry = 1.0 - np.mean(np.abs(left_half[:, :min_width] - right_half[:, :min_width])) / 255.0
-        
+        vertical_symmetry = (
+            1.0
+            - np.mean(np.abs(left_half[:, :min_width] - right_half[:, :min_width]))
+            / 255.0
+        )
+
         # Horizontal symmetry
-        top_half = gray[:height // 2, :]
-        bottom_half = cv2.flip(gray[height // 2:, :], 0)
+        top_half = gray[: height // 2, :]
+        bottom_half = cv2.flip(gray[height // 2 :, :], 0)
         min_height = min(top_half.shape[0], bottom_half.shape[0])
-        horizontal_symmetry = 1.0 - np.mean(np.abs(top_half[:min_height, :] - bottom_half[:min_height, :])) / 255.0
-        
+        horizontal_symmetry = (
+            1.0
+            - np.mean(np.abs(top_half[:min_height, :] - bottom_half[:min_height, :]))
+            / 255.0
+        )
+
         # Focus point detection (simplified)
         # Find the region with highest gradient magnitude
         grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
         grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
         grad_mag = np.sqrt(grad_x**2 + grad_y**2)
-        
+
         # Find center of mass of high gradient regions
         threshold = np.percentile(grad_mag, 90)
         y_coords, x_coords = np.where(grad_mag > threshold)
@@ -1074,12 +1115,14 @@ class FrameExtractor:
             focus_y = np.mean(y_coords) / height
         else:
             focus_x, focus_y = 0.5, 0.5
-        
+
         composition_metrics = {
             "rule_of_thirds": {
                 "edge_strength_mean": float(np.mean(thirds_regions)),
                 "edge_strength_std": float(np.std(thirds_regions)),
-                "alignment_score": float(np.mean(thirds_regions) / (np.mean(grad_mag) + 1e-6)),
+                "alignment_score": float(
+                    np.mean(thirds_regions) / (np.mean(grad_mag) + 1e-6)
+                ),
             },
             "symmetry": {
                 "vertical": float(vertical_symmetry),
@@ -1089,17 +1132,19 @@ class FrameExtractor:
             "focus_point": {
                 "x": float(focus_x),
                 "y": float(focus_y),
-                "distance_from_center": float(np.sqrt((focus_x - 0.5)**2 + (focus_y - 0.5)**2)),
+                "distance_from_center": float(
+                    np.sqrt((focus_x - 0.5) ** 2 + (focus_y - 0.5) ** 2)
+                ),
             },
             "balance": self._assess_visual_balance(gray),
         }
-        
+
         return composition_metrics
-    
+
     def _assess_visual_balance(self, gray: np.ndarray) -> dict[str, float]:
         """Assess visual balance of the image."""
         height, width = gray.shape
-        
+
         # Divide into quadrants
         mid_x, mid_y = width // 2, height // 2
         quadrants = [
@@ -1108,72 +1153,97 @@ class FrameExtractor:
             gray[mid_y:, :mid_x],  # Bottom-left
             gray[mid_y:, mid_x:],  # Bottom-right
         ]
-        
+
         # Calculate weight (brightness) of each quadrant
         weights = [np.mean(q) for q in quadrants]
-        
+
         # Calculate balance metrics
-        horizontal_balance = 1.0 - abs(weights[0] + weights[2] - weights[1] - weights[3]) / (sum(weights) + 1e-6)
-        vertical_balance = 1.0 - abs(weights[0] + weights[1] - weights[2] - weights[3]) / (sum(weights) + 1e-6)
-        diagonal_balance = 1.0 - abs(weights[0] + weights[3] - weights[1] - weights[2]) / (sum(weights) + 1e-6)
-        
+        horizontal_balance = 1.0 - abs(
+            weights[0] + weights[2] - weights[1] - weights[3]
+        ) / (sum(weights) + 1e-6)
+        vertical_balance = 1.0 - abs(
+            weights[0] + weights[1] - weights[2] - weights[3]
+        ) / (sum(weights) + 1e-6)
+        diagonal_balance = 1.0 - abs(
+            weights[0] + weights[3] - weights[1] - weights[2]
+        ) / (sum(weights) + 1e-6)
+
         return {
             "horizontal": float(horizontal_balance),
             "vertical": float(vertical_balance),
             "diagonal": float(diagonal_balance),
-            "overall": float((horizontal_balance + vertical_balance + diagonal_balance) / 3),
+            "overall": float(
+                (horizontal_balance + vertical_balance + diagonal_balance) / 3
+            ),
         }
-    
-    def _generate_frame_quality_report(self, blur_score: float, blur_category: str,
-                                     contrast_score: float, contrast_category: str,
-                                     brightness_score: float, brightness_category: str,
-                                     overall_quality_score: float, overall_quality_category: str,
-                                     histogram_metrics: dict[str, Any],
-                                     sharpness_details: dict[str, Any],
-                                     color_metrics: dict[str, Any],
-                                     noise_metrics: dict[str, Any],
-                                     composition_metrics: dict[str, Any]) -> dict[str, Any]:
+
+    def _generate_frame_quality_report(
+        self,
+        blur_score: float,
+        blur_category: str,
+        contrast_score: float,
+        contrast_category: str,
+        brightness_score: float,
+        brightness_category: str,
+        overall_quality_score: float,
+        overall_quality_category: str,
+        histogram_metrics: dict[str, Any],
+        sharpness_details: dict[str, Any],
+        color_metrics: dict[str, Any],
+        noise_metrics: dict[str, Any],
+        composition_metrics: dict[str, Any],
+    ) -> dict[str, Any]:
         """Generate comprehensive quality report for a frame."""
         # Identify issues
         issues = []
         recommendations = []
-        
+
         # Blur issues
         if blur_category in ["poor", "fair"]:
-            issues.append(f"Image sharpness is {blur_category} (score: {blur_score:.1f})")
+            issues.append(
+                f"Image sharpness is {blur_category} (score: {blur_score:.1f})"
+            )
             recommendations.append("Ensure camera is stable and properly focused")
-        
+
         # Contrast issues
         if contrast_category in ["poor", "fair"]:
-            issues.append(f"Image contrast is {contrast_category} (score: {contrast_score:.1f})")
-            recommendations.append("Improve lighting contrast or adjust camera settings")
-        
+            issues.append(
+                f"Image contrast is {contrast_category} (score: {contrast_score:.1f})"
+            )
+            recommendations.append(
+                "Improve lighting contrast or adjust camera settings"
+            )
+
         # Brightness issues
         if brightness_category == "poor":
             if brightness_score < 50:
                 issues.append(f"Image is too dark (brightness: {brightness_score:.1f})")
                 recommendations.append("Increase lighting or adjust exposure settings")
             else:
-                issues.append(f"Image is overexposed (brightness: {brightness_score:.1f})")
+                issues.append(
+                    f"Image is overexposed (brightness: {brightness_score:.1f})"
+                )
                 recommendations.append("Reduce lighting or adjust exposure settings")
-        
+
         # Color cast issues
         color_cast = color_metrics["color_balance"]["color_cast"]
         if color_cast != "neutral":
             issues.append(f"Image has a {color_cast.replace('_', ' ')}")
             recommendations.append("Adjust white balance settings")
-        
+
         # Noise issues
         noise_level = noise_metrics["noise_level"]
         if noise_level in ["high", "very_high"]:
             issues.append(f"Image has {noise_level.replace('_', ' ')} noise levels")
             recommendations.append("Use better lighting or reduce ISO settings")
-        
+
         # Composition issues
         if composition_metrics["focus_point"]["distance_from_center"] > 0.4:
             issues.append("Main subject appears off-center")
-            recommendations.append("Consider repositioning subject using rule of thirds")
-        
+            recommendations.append(
+                "Consider repositioning subject using rule of thirds"
+            )
+
         # Generate strengths
         strengths = []
         if blur_category == "excellent":
@@ -1186,7 +1256,7 @@ class FrameExtractor:
             strengths.append("Very low noise levels")
         if composition_metrics["symmetry"]["overall"] > 0.8:
             strengths.append("Good visual symmetry")
-        
+
         return {
             "overall_score": overall_quality_score,
             "overall_category": overall_quality_category,
@@ -1196,7 +1266,10 @@ class FrameExtractor:
             "technical_details": {
                 "blur": {"score": blur_score, "category": blur_category},
                 "contrast": {"score": contrast_score, "category": contrast_category},
-                "brightness": {"score": brightness_score, "category": brightness_category},
+                "brightness": {
+                    "score": brightness_score,
+                    "category": brightness_category,
+                },
                 "dynamic_range": histogram_metrics["dynamic_range"],
                 "entropy": histogram_metrics["entropy"],
                 "edge_density": sharpness_details["edge_density"],
@@ -1268,25 +1341,27 @@ class FrameExtractor:
                 high_confidence_regions=0,
                 average_confidence=0.0,
             )
-    
-    def _detect_objects_in_frame(self, frame: np.ndarray) -> ObjectDetectionResult | None:
+
+    def _detect_objects_in_frame(
+        self, frame: np.ndarray
+    ) -> ObjectDetectionResult | None:
         """Detect presentation elements in a frame using object detection."""
         if not self.config.visual_analysis.enable_object_detection:
             return None
-        
+
         try:
             # Lazy-load object detector
             if self.object_detector is None:
                 self.object_detector = ObjectDetector(config=self.config)
-            
+
             # Convert BGR frame to RGB for object detection
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
+
             # Perform object detection
             detection_result = self.object_detector.detect_objects(image=rgb_frame)
-            
+
             return detection_result
-            
+
         except Exception as e:
             logger.warning(f"Failed to detect objects in frame: {e}")
             # Return a failed detection result instead of None to maintain consistency
@@ -1320,12 +1395,9 @@ class FrameExtractor:
             color_metrics={},
             noise_metrics={},
             composition_metrics={},
-            quality_report={
-                "status": "error",
-                "message": "Quality assessment failed"
-            },
+            quality_report={"status": "error", "message": "Quality assessment failed"},
         )
-    
+
     def cleanup(self):
         """Clean up model resources."""
         if self.captioner is not None:
@@ -1335,7 +1407,7 @@ class FrameExtractor:
         if self.ocr_detector is not None:
             self.ocr_detector.cleanup()
             self.ocr_detector = None
-        
+
         if self.object_detector is not None:
             self.object_detector.cleanup()
             self.object_detector = None

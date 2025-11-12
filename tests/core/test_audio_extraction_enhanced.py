@@ -162,7 +162,7 @@ class TestAudioExtractionCore:
     @patch("ffmpeg.run")
     def test_extract_audio_success_default_path(
         self,
-        mock_run,
+        _mock_run,
         mock_probe,
         audio_extractor,
         mock_video_info,
@@ -193,7 +193,7 @@ class TestAudioExtractionCore:
     @patch("ffmpeg.run")
     def test_extract_audio_custom_output_path(
         self,
-        mock_run,
+        _mock_run,
         mock_probe,
         audio_extractor,
         mock_video_info,
@@ -298,7 +298,7 @@ class TestAudioExtractionCore:
     @patch("ffmpeg.run")
     def test_extract_audio_output_directory_creation_error(
         self,
-        mock_run,
+        _mock_run,
         mock_probe,
         audio_extractor,
         mock_video_info,
@@ -355,7 +355,7 @@ class TestAudioExtractionAdvanced:
     @patch("ffmpeg.run")
     def test_extract_audio_with_normalization_disabled(
         self,
-        mock_run,
+        _mock_run,
         mock_probe,
         mock_config,
         mock_video_info,
@@ -408,7 +408,7 @@ class TestAudioSegmentExtraction:
     @patch("ffmpeg.run")
     def test_extract_audio_segment_success(
         self,
-        mock_run,
+        _mock_run,
         mock_probe,
         audio_extractor,
         mock_video_info,

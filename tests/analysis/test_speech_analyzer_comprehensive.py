@@ -507,7 +507,7 @@ class TestSpeechAnalyzerEdgeCases:
         assert overall_metrics.most_positive_scene == 1
         assert overall_metrics.most_negative_scene is None  # Not negative enough
 
-    def test_get_total_filler_words_by_type(self, speech_analyzer):
+    def test_get_total_filler_words_by_type(self, _speech_analyzer):
         """Test aggregation of filler words across scenes."""
         scene_metrics = [
             SceneSpeechMetrics(
@@ -684,7 +684,7 @@ class TestSpeechAnalyzerEdgeCases:
         assert filler_counts["you"] == 1
         assert len(filler_counts) == 3
 
-    def test_scene_filtering_boundary_conditions(self, speech_analyzer):
+    def test_scene_filtering_boundary_conditions(self, _speech_analyzer):
         """Test scene filtering methods with boundary values."""
         scene_metrics = [
             SceneSpeechMetrics(
@@ -971,7 +971,7 @@ class TestSpeechAnalyzerErrorHandling:
         # With threshold 1.0, no words should pass confidence filter
         assert result2.scene_metrics[0].word_count == 0
 
-    def test_to_dict_serialization(self, speech_analyzer):
+    def test_to_dict_serialization(self, _speech_analyzer):
         """Test dictionary serialization of results."""
         # Create minimal result
         scene_metrics = [

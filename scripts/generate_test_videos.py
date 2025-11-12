@@ -120,18 +120,22 @@ def check_espeak() -> bool:
         return False
 
 
-def create_speech_audio(text: str, output_path: Path, duration: int = None) -> bool:
+def create_speech_audio(
+    text: str, output_path: Path, duration: int | None = None
+) -> bool:
     """
     Create speech audio from text using espeak if available.
 
     Args:
         text: Text to convert to speech
         output_path: Output audio file path
-        duration: Target duration in seconds (optional)
+        duration: Target duration in seconds (optional, not used with espeak)
 
     Returns:
         True if successful, False otherwise
     """
+    # Note: duration parameter is not used with espeak but kept for API compatibility
+    _ = duration  # Mark as intentionally unused
     if not check_espeak():
         return False
 
@@ -392,10 +396,7 @@ def main() -> int:
             total_videos += 1
 
             # Determine output path based on video purpose
-            if "dev_sample" in spec.name:
-                output_path = samples_path
-            else:
-                output_path = fixtures_path
+            output_path = samples_path if "dev_sample" in spec.name else fixtures_path
 
             # Generate MP4 version
             if generate_video(spec, output_path, "mp4"):

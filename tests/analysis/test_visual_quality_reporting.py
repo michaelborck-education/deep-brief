@@ -92,7 +92,12 @@ def create_quality_metrics_with_issues():
             },
             "symmetry": {"vertical": 0.4, "horizontal": 0.3, "overall": 0.35},
             "focus_point": {"x": 0.8, "y": 0.9, "distance_from_center": 0.5},
-            "balance": {"horizontal": 0.6, "vertical": 0.5, "diagonal": 0.4, "overall": 0.5},
+            "balance": {
+                "horizontal": 0.6,
+                "vertical": 0.5,
+                "diagonal": 0.4,
+                "overall": 0.5,
+            },
         },
         quality_report={
             "overall_score": 0.25,
@@ -179,7 +184,12 @@ def create_quality_metrics_excellent():
             },
             "symmetry": {"vertical": 0.85, "horizontal": 0.82, "overall": 0.835},
             "focus_point": {"x": 0.5, "y": 0.5, "distance_from_center": 0.0},
-            "balance": {"horizontal": 0.92, "vertical": 0.90, "diagonal": 0.88, "overall": 0.90},
+            "balance": {
+                "horizontal": 0.92,
+                "vertical": 0.90,
+                "diagonal": 0.88,
+                "overall": 0.90,
+            },
         },
         quality_report={
             "overall_score": 0.95,
@@ -327,8 +337,13 @@ class TestQualityReporting:
         assert "Low extraction success rate: 75.0%" in report["issues"]
         assert "Consider improving video recording quality" in report["recommendations"]
         assert "Focus on camera stability to reduce blur" in report["recommendations"]
-        assert "Improve lighting contrast in recording environment" in report["recommendations"]
-        assert "Adjust lighting levels for better visibility" in report["recommendations"]
+        assert (
+            "Improve lighting contrast in recording environment"
+            in report["recommendations"]
+        )
+        assert (
+            "Adjust lighting levels for better visibility" in report["recommendations"]
+        )
 
     def test_overall_quality_report(self):
         """Test generating overall quality report for entire video."""
@@ -387,7 +402,12 @@ class TestQualityReporting:
             total_frames_processed=2,
             overall_success_rate=1.0,
             scene_analyses=[scene_1, scene_2],
-            overall_quality_distribution={"poor": 1, "excellent": 1, "good": 0, "fair": 0},
+            overall_quality_distribution={
+                "poor": 1,
+                "excellent": 1,
+                "good": 0,
+                "fair": 0,
+            },
             average_quality_score=0.60,
             best_frames_per_scene=[poor_frame, excellent_frame],
             video_duration=20.0,
@@ -437,36 +457,51 @@ class TestQualityReporting:
         # Create test frames with extreme values
         black_frame = np.zeros((100, 100, 3), dtype=np.uint8)
         white_frame = np.ones((100, 100, 3), dtype=np.uint8) * 255
-        
+
         # Test black frame
         black_metrics = frame_extractor._assess_frame_quality(black_frame)
         assert black_metrics.brightness_category == "poor"
         assert black_metrics.brightness_score < 50
         # Find the darkness issue in the list of issues
-        darkness_issue_found = any("too dark" in issue.lower() for issue in black_metrics.quality_report["issues"])
-        assert darkness_issue_found, f"Expected 'too dark' in issues, got: {black_metrics.quality_report['issues']}"
-        
+        darkness_issue_found = any(
+            "too dark" in issue.lower()
+            for issue in black_metrics.quality_report["issues"]
+        )
+        assert darkness_issue_found, (
+            f"Expected 'too dark' in issues, got: {black_metrics.quality_report['issues']}"
+        )
+
         # Test white frame
         white_metrics = frame_extractor._assess_frame_quality(white_frame)
         assert white_metrics.brightness_category == "poor"
         assert white_metrics.brightness_score > 200
         # Find the overexposure issue in the list of issues
-        overexposed_issue_found = any("overexposed" in issue.lower() for issue in white_metrics.quality_report["issues"])
-        assert overexposed_issue_found, f"Expected 'overexposed' in issues, got: {white_metrics.quality_report['issues']}"
+        overexposed_issue_found = any(
+            "overexposed" in issue.lower()
+            for issue in white_metrics.quality_report["issues"]
+        )
+        assert overexposed_issue_found, (
+            f"Expected 'overexposed' in issues, got: {white_metrics.quality_report['issues']}"
+        )
 
     def test_color_metrics_analysis(self, frame_extractor):
         """Test color metrics analysis."""
         # Create frame with color cast
         red_frame = np.zeros((100, 100, 3), dtype=np.uint8)
         red_frame[:, :, 2] = 200  # High red channel (BGR format)
-        red_frame[:, :, 1] = 50   # Low green
-        red_frame[:, :, 0] = 50   # Low blue
-        
+        red_frame[:, :, 1] = 50  # Low green
+        red_frame[:, :, 0] = 50  # Low blue
+
         metrics = frame_extractor._analyze_color_metrics(red_frame)
-        
+
         assert metrics["color_balance"]["color_cast"] == "red_cast"
-        assert metrics["color_balance"]["red_mean"] > metrics["color_balance"]["green_mean"]
-        assert metrics["color_balance"]["red_mean"] > metrics["color_balance"]["blue_mean"]
+        assert (
+            metrics["color_balance"]["red_mean"]
+            > metrics["color_balance"]["green_mean"]
+        )
+        assert (
+            metrics["color_balance"]["red_mean"] > metrics["color_balance"]["blue_mean"]
+        )
         assert "saturation" in metrics
         assert "hue_distribution" in metrics
         assert "color_diversity" in metrics
@@ -474,16 +509,21 @@ class TestQualityReporting:
     def test_noise_metrics_analysis(self, frame_extractor):
         """Test noise metrics analysis."""
         # Create noisy frame
-        noisy_frame = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         gray_noisy = np.random.randint(0, 256, (100, 100), dtype=np.uint8)
-        
+
         metrics = frame_extractor._analyze_noise_metrics(gray_noisy)
-        
+
         assert "noise_std_laplacian" in metrics
         assert "noise_estimate_gaussian" in metrics
         assert "signal_to_noise_ratio" in metrics
         assert "noise_level" in metrics
-        assert metrics["noise_level"] in ["very_low", "low", "moderate", "high", "very_high"]
+        assert metrics["noise_level"] in [
+            "very_low",
+            "low",
+            "moderate",
+            "high",
+            "very_high",
+        ]
 
     def test_composition_metrics_analysis(self, frame_extractor):
         """Test composition metrics analysis."""
@@ -491,23 +531,23 @@ class TestQualityReporting:
         frame = np.zeros((300, 400, 3), dtype=np.uint8)
         # Add white rectangle in center
         frame[100:200, 150:250] = 255
-        
+
         metrics = frame_extractor._analyze_composition_metrics(frame)
-        
+
         assert "rule_of_thirds" in metrics
         assert "symmetry" in metrics
         assert "focus_point" in metrics
         assert "balance" in metrics
-        
+
         # Check symmetry scores
         assert 0 <= metrics["symmetry"]["vertical"] <= 1
         assert 0 <= metrics["symmetry"]["horizontal"] <= 1
         assert 0 <= metrics["symmetry"]["overall"] <= 1
-        
+
         # Check focus point
         assert 0 <= metrics["focus_point"]["x"] <= 1
         assert 0 <= metrics["focus_point"]["y"] <= 1
         assert metrics["focus_point"]["distance_from_center"] >= 0
-        
+
         # Check balance scores
         assert 0 <= metrics["balance"]["overall"] <= 1

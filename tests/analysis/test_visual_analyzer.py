@@ -68,7 +68,12 @@ def create_test_quality_metrics(
             },
             "symmetry": {"vertical": 0.8, "horizontal": 0.7, "overall": 0.75},
             "focus_point": {"x": 0.5, "y": 0.5, "distance_from_center": 0.0},
-            "balance": {"horizontal": 0.9, "vertical": 0.85, "diagonal": 0.8, "overall": 0.85},
+            "balance": {
+                "horizontal": 0.9,
+                "vertical": 0.85,
+                "diagonal": 0.8,
+                "overall": 0.85,
+            },
         },
         quality_report={
             "overall_score": overall_quality_score,
@@ -79,7 +84,10 @@ def create_test_quality_metrics(
             "technical_details": {
                 "blur": {"score": blur_score, "category": blur_category},
                 "contrast": {"score": contrast_score, "category": contrast_category},
-                "brightness": {"score": brightness_score, "category": brightness_category},
+                "brightness": {
+                    "score": brightness_score,
+                    "category": brightness_category,
+                },
                 "dynamic_range": 200,
                 "entropy": 7.5,
                 "edge_density": 0.15,
@@ -577,7 +585,7 @@ class TestFrameExtractor:
 
     @patch("cv2.VideoCapture")
     def test_extract_frames_file_not_found(
-        self, mock_video_capture, frame_extractor, sample_scene_result
+        self, _mock_video_capture, frame_extractor, sample_scene_result
     ):
         """Test frame extraction with non-existent file."""
         video_path = Path("/nonexistent/video.mp4")

@@ -7,7 +7,7 @@ for video analysis applications.
 import logging
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import torch
 import whisper
@@ -25,6 +25,24 @@ logger = logging.getLogger(__name__)
 
 # Suppress some whisper warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="whisper")
+
+# Type aliases for Whisper results
+class WhisperWord(TypedDict):
+    word: str
+    start: float
+    end: float
+
+class WhisperSegment(TypedDict):
+    id: int
+    text: str
+    start: float
+    end: float
+    words: list[WhisperWord]
+
+class WhisperResult(TypedDict):
+    text: str
+    segments: list[WhisperSegment]
+    language: str
 
 
 class WordTimestamp(BaseModel):
@@ -84,7 +102,14 @@ class TranscriptionResult(BaseModel):
                     or abs(word.start - timestamp) <= tolerance
                     or abs(word.end - timestamp) <= tolerance
                 ):
-                    words.append(word)
+                    words.append(
+                        WordTimestamp(
+                            word=word.word,
+                            start=word.start,
+                            end=word.end,
+                            confidence=1.0,  # Default confidence
+                        )
+                    )
         return words
 
     def get_text_between_times(self, start_time: float, end_time: float) -> str:
@@ -100,7 +125,7 @@ class TranscriptionResult(BaseModel):
                         if word.end >= start_time and word.start <= end_time:
                             segment_words.append(word.word)
                     if segment_words:
-                        text_parts.append(" ".join(segment_words))
+                        text_parts.append(" ".join(segment_words))  # type: ignore
                 else:
                     # Fallback to segment-level text
                     text_parts.append(segment.text.strip())
@@ -335,11 +360,11 @@ class WhisperTranscriber:
             model = self._load_model()
 
             # Transcribe with Whisper
-            result = model.transcribe(
+            result: WhisperResult = model.transcribe(  # type: ignore
                 str(audio_info.file_path),
                 language=final_language,
-                temperature=temperature,
-                word_timestamps=word_timestamps,
+                temperature=temperature or 0.0,  # Convert None to 0.0
+                word_timestamps=word_timestamps or False,  # Convert None to False
                 verbose=False,  # Reduce logging noise
             )
 
@@ -347,23 +372,26 @@ class WhisperTranscriber:
             segments = []
             for i, segment_data in enumerate(result.get("segments", [])):
                 # Process word-level timestamps if available
-                words = []
+                words: list[WordTimestamp] = []
                 if word_timestamps and "words" in segment_data:
-                    for word_data in segment_data["words"]:
-                        words.append(
-                            WordTimestamp(
-                                word=word_data["word"].strip(),
-                                start=float(word_data["start"]),
-                                end=float(word_data["end"]),
-                                confidence=float(word_data.get("confidence", 1.0)),
-                            )
-                        )
+                    word_list: list[WhisperWord] = segment_data.get("words", [])  # type: ignore
+                    for word_data in word_list:  # type: ignore
+                                words.append(
+                                    WordTimestamp(
+                                        word=str(word_data.get("word", "")).strip(),
+                                        start=float(word_data.get("start", 0.0)),
+                                        end=float(word_data.get("end", 0.0)),
+                                        confidence=float(
+                                            word_data.get("confidence", 1.0)
+                                        ),
+                                    )
+                                )
 
                 segment = Segment(
                     id=i,
-                    text=segment_data["text"].strip(),
-                    start=float(segment_data["start"]),
-                    end=float(segment_data["end"]),
+                    text=str(segment_data.get("text", "")).strip(),
+                    start=float(segment_data.get("start", 0.0)),
+                    end=float(segment_data.get("end", 0.0)),
                     avg_logprob=float(segment_data.get("avg_logprob", 0.0)),
                     no_speech_prob=float(segment_data.get("no_speech_prob", 0.0)),
                     words=words,
@@ -454,10 +482,7 @@ class WhisperTranscriber:
             ) from e
 
     def transcribe_from_path(
-        self,
-        audio_path: Path | str,
-        language: str | None = None,
-        **kwargs
+        self, audio_path: Path | str, language: str | None = None, **kwargs
     ) -> TranscriptionResult:
         """
         Convenience method to transcribe audio from a file path.
@@ -480,12 +505,14 @@ class WhisperTranscriber:
         # Probe audio file to get metadata
         try:
             probe = ffmpeg.probe(str(audio_path))
-            audio_stream = next(s for s in probe['streams'] if s['codec_type'] == 'audio')
+            audio_stream = next(
+                s for s in probe["streams"] if s["codec_type"] == "audio"
+            )
 
-            duration = float(probe['format']['duration'])
-            sample_rate = int(audio_stream['sample_rate'])
-            channels = int(audio_stream['channels'])
-            size_mb = int(probe['format']['size']) / (1024 * 1024)
+            duration = float(probe["format"]["duration"])
+            sample_rate = int(audio_stream["sample_rate"])
+            channels = int(audio_stream["channels"])
+            size_mb = int(probe["format"]["size"]) / (1024 * 1024)
 
             # Create AudioInfo object
             audio_info = AudioInfo(
@@ -494,7 +521,7 @@ class WhisperTranscriber:
                 sample_rate=sample_rate,
                 channels=channels,
                 size_mb=size_mb,
-                format=audio_stream['codec_name']
+                format=audio_stream["codec_name"],
             )
 
             # Call the main transcription method
@@ -628,14 +655,14 @@ class WhisperTranscriber:
             mel = whisper.log_mel_spectrogram(audio).to(model.device)
 
             # Detect language
-            _, probs = model.detect_language(mel)
+            _, probs = model.detect_language(mel)  # type: ignore
 
             # Get the most probable language
-            detected_language = max(probs, key=probs.get)
-            confidence = probs[detected_language]
+            detected_language = max(probs, key=probs.get)  # type: ignore
+            confidence = probs[detected_language]  # type: ignore
 
             # Sort all probabilities for reference
-            sorted_probs = dict(sorted(probs.items(), key=lambda x: x[1], reverse=True))
+            sorted_probs = dict(sorted(probs.items(), key=lambda x: x[1], reverse=True))  # type: ignore
 
             logger.info(
                 f"Language detection complete: {detected_language} "
@@ -647,9 +674,9 @@ class WhisperTranscriber:
             logger.debug(f"Top 3 language candidates: {top_3}")
 
             return LanguageDetectionResult(
-                detected_language=detected_language,
-                confidence=confidence,
-                all_probabilities=sorted_probs,
+                detected_language=str(detected_language),  # type: ignore
+                confidence=confidence,  # type: ignore
+                all_probabilities=sorted_probs,  # type: ignore
                 detection_method="whisper",
             )
 

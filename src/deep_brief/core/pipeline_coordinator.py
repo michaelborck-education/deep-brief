@@ -228,6 +228,7 @@ class PipelineCoordinator:
                 operations=operations,
             )
 
+        video_info = None
         try:
             # Step 1: Validate video file
             progress_callback = (
@@ -351,10 +352,13 @@ class PipelineCoordinator:
             # Mark workflow as complete
             if composite_tracker:
                 # Final progress update
-                self.progress_tracker.update_progress(
+                composite_tracker.update_progress(
                     operation_id=workflow_id,
                     progress=1.0,
                     current_step="Analysis complete",
+                )
+                composite_tracker.complete_operation(
+                    operation_id=workflow_id,
                 )
                 self.progress_tracker.complete_operation(
                     operation_id=workflow_id,
@@ -380,7 +384,7 @@ class PipelineCoordinator:
                 composite_tracker.fail_workflow(error_msg)
 
             result = VideoAnalysisResult(
-                video_info=video_info if "video_info" in locals() else None,
+                video_info=video_info,
                 success=False,
                 error_message=error_msg,
             )
@@ -401,7 +405,7 @@ class PipelineCoordinator:
             )
 
             result = VideoAnalysisResult(
-                video_info=video_info if "video_info" in locals() else None,
+                video_info=video_info,
                 success=False,
                 error_message=error_msg,
             )
@@ -501,7 +505,7 @@ class PipelineCoordinator:
         self,
         audio_path: Path,
         scene_result: SceneDetectionResult | None = None,
-        progress_callback: Any = None,
+        _progress_callback: Any = None,
     ) -> dict[str, Any]:
         """
         Perform speech analysis on extracted audio.
@@ -532,8 +536,7 @@ class PipelineCoordinator:
             if scene_result:
                 speech_analyzer = SpeechAnalyzer(config=self.config)
                 speech_analysis = speech_analyzer.analyze_speech(
-                    transcription_result=transcription_result,
-                    scene_result=scene_result
+                    transcription_result=transcription_result, scene_result=scene_result
                 )
             else:
                 logger.warning("No scene result provided, skipping speech analysis")
@@ -552,8 +555,8 @@ class PipelineCoordinator:
     def analyze_frames(
         self,
         frame_paths: list[Path],
-        scenes: list | None = None,
-        progress_callback: Any = None,
+        _scenes: list | None = None,
+        _progress_callback: Any = None,
     ) -> dict[str, Any]:
         """
         Perform visual analysis on extracted frames.
@@ -575,15 +578,17 @@ class PipelineCoordinator:
             # Analyze all frames
             frame_results = []
             for i, frame_path in enumerate(frame_paths):
-                logger.debug(f"Analyzing frame {i+1}/{len(frame_paths)}: {frame_path}")
+                logger.debug(
+                    f"Analyzing frame {i + 1}/{len(frame_paths)}: {frame_path}"
+                )
 
                 result = frame_analyzer.analyze_frame_from_path(
                     frame_path=frame_path, frame_number=i + 1
                 )
                 frame_results.append(result)
 
-                if progress_callback:
-                    progress_callback((i + 1) / len(frame_paths))
+                if _progress_callback:
+                    _progress_callback((i + 1) / len(frame_paths))
 
             logger.info(f"Visual analysis complete: {len(frame_results)} frames")
 

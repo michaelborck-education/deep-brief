@@ -307,7 +307,7 @@ class TestFrameExtraction:
             patch("ffmpeg.input") as mock_input,
             patch("ffmpeg.output") as mock_output,
             patch("ffmpeg.overwrite_output") as mock_overwrite,
-            patch("ffmpeg.run") as mock_run,
+            patch("ffmpeg.run") as _mock_run,
             patch("ffmpeg.filter") as mock_filter,
         ):
             # Set up mock chain
@@ -359,7 +359,7 @@ class TestFrameExtraction:
             patch("ffmpeg.input") as mock_input,
             patch("ffmpeg.output") as mock_output,
             patch("ffmpeg.overwrite_output") as mock_overwrite,
-            patch("ffmpeg.run") as mock_run,
+            patch("ffmpeg.run") as _mock_run,
         ):
             mock_input.return_value = MagicMock()
             mock_output.return_value = MagicMock()
@@ -440,7 +440,7 @@ class TestFrameExtraction:
         ]
 
         def mock_extract_side_effect(
-            video_info, start_time, end_time, scene_number, **kwargs
+            _video_info, start_time, end_time, scene_number, **_kwargs
         ):
             if scene_number == 2:
                 raise FrameExtractionError(
@@ -475,7 +475,7 @@ class TestFrameExtraction:
 class TestVideoProcessorCleanup:
     """Test temporary file cleanup functionality."""
 
-    def test_cleanup_temp_files_enabled(self, video_processor, tmp_path):
+    def test_cleanup_temp_files_enabled(self, video_processor, _tmp_path):
         """Test cleanup when enabled."""
         # Create some temp files
         temp_file1 = video_processor.temp_dir / "temp1.wav"

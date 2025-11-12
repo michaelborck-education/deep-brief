@@ -17,21 +17,20 @@ from pydantic import BaseModel
 try:
     import pytesseract
 
-    TESSERACT_AVAILABLE = True
+    _tesseract_available = True
 except ImportError:
-    TESSERACT_AVAILABLE = False
+    _tesseract_available = False
     pytesseract = None
 
 try:
-    import easyocr
+    import easyocr  # type: ignore
 
-    EASYOCR_AVAILABLE = True
+    _easyocr_available = True
 except ImportError:
-    EASYOCR_AVAILABLE = False
-    easyocr = None
+    _easyocr_available = False
+    easyocr = None  # type: ignore
 
 from deep_brief.analysis.error_handling import (
-    ImageValidationError,
     ModelInitializationError,
     validate_image,
     with_retry,
@@ -92,14 +91,14 @@ class OCRDetector:
 
     def _validate_dependencies(self):
         """Validate that required OCR dependencies are available."""
-        if self.engine == "tesseract" and not TESSERACT_AVAILABLE:
+        if self.engine == "tesseract" and not _tesseract_available:
             raise VideoProcessingError(
                 message="Tesseract OCR not available. Install with: pip install pytesseract",
                 error_code=ErrorCode.MISSING_DEPENDENCY,
                 details={"missing_package": "pytesseract"},
             )
 
-        if self.engine == "easyocr" and not EASYOCR_AVAILABLE:
+        if self.engine == "easyocr" and not _easyocr_available:
             raise VideoProcessingError(
                 message="EasyOCR not available. Install with: pip install easyocr",
                 error_code=ErrorCode.MISSING_DEPENDENCY,
@@ -118,7 +117,8 @@ class OCRDetector:
         """Initialize Tesseract OCR configuration."""
         try:
             # Test Tesseract availability
-            pytesseract.get_tesseract_version()
+            if pytesseract:
+                pytesseract.get_tesseract_version()
 
             # Configure Tesseract
             lang_string = "+".join(self.languages)
@@ -137,35 +137,35 @@ class OCRDetector:
     @with_retry(max_attempts=2, delay=2.0)
     def _initialize_easyocr(self):
         """Initialize EasyOCR reader."""
-        try:
-            # Map common language codes to EasyOCR format
-            easyocr_languages = []
-            lang_mapping = {
-                "eng": "en",
-                "spa": "es",
-                "fra": "fr",
-                "deu": "de",
-                "ita": "it",
-                "por": "pt",
-                "rus": "ru",
-                "jpn": "ja",
-                "kor": "ko",
-                "chi_sim": "ch_sim",
-                "chi_tra": "ch_tra",
-            }
+        # Map common language codes to EasyOCR format
+        easyocr_languages = []
+        lang_mapping = {
+            "eng": "en",
+            "spa": "es",
+            "fra": "fr",
+            "deu": "de",
+            "ita": "it",
+            "por": "pt",
+            "rus": "ru",
+            "jpn": "ja",
+            "kor": "ko",
+            "chi_sim": "ch_sim",
+            "chi_tra": "ch_tra",
+        }
 
+        try:
             for lang in self.languages:
                 mapped_lang = lang_mapping.get(lang, lang)
-                easyocr_languages.append(mapped_lang)
+                easyocr_languages.append(mapped_lang)  # type: ignore
 
-            self.easyocr_reader = easyocr.Reader(easyocr_languages, gpu=False)
+            self.easyocr_reader = easyocr.Reader(easyocr_languages, gpu=False)  # type: ignore
             logger.info(f"EasyOCR initialized with languages: {easyocr_languages}")
 
         except Exception as e:
             raise ModelInitializationError(
                 message=f"Failed to initialize EasyOCR: {str(e)}",
                 model_name="easyocr",
-                details={"languages": easyocr_languages},
+                details={"languages": easyocr_languages or self.languages},
                 cause=e,
             ) from e
 
@@ -232,10 +232,15 @@ class OCRDetector:
                     )
                 validated_array = validate_image(image_path, f"image file {image_path}")
                 image = Image.fromarray(validated_array)
-            else:
+            elif image_array is not None:
                 # Validate numpy array
                 validated_array = validate_image(image_array, "numpy array")
                 image = Image.fromarray(validated_array)
+            else:
+                raise VideoProcessingError(
+                    message="No image input provided",
+                    error_code=ErrorCode.INVALID_INPUT,
+                )
 
             # Preprocess image for better OCR if requested
             if preprocess:
@@ -273,7 +278,7 @@ class OCRDetector:
 
             # Detect languages present
             languages_detected = list(
-                set(region.language for region in analyzed_regions if region.language)
+                {region.language for region in analyzed_regions if region.language}
             )
 
             processing_time = time.time() - start_time
@@ -338,8 +343,8 @@ class OCRDetector:
 
         try:
             # Get detailed OCR data with bounding boxes
-            data = pytesseract.image_to_data(
-                image, config=self.tesseract_config, output_type=pytesseract.Output.DICT
+            data = pytesseract.image_to_data(  # type: ignore
+                image, config=self.tesseract_config, output_type=pytesseract.Output.DICT  # type: ignore
             )
 
             n_boxes = len(data["level"])
@@ -380,7 +385,7 @@ class OCRDetector:
             image_array = np.array(image)
 
             # Perform OCR
-            results = self.easyocr_reader.readtext(image_array)
+            results = self.easyocr_reader.readtext(image_array)  # type: ignore
 
             for result in results:
                 bbox_points, text, confidence = result
@@ -515,7 +520,7 @@ class OCRDetector:
         if self.engine == "tesseract":
             try:
                 # Get available languages from Tesseract
-                langs = pytesseract.get_languages(config="")
+                langs = pytesseract.get_languages(config="")  # type: ignore
                 return langs
             except Exception:
                 # Return common language codes if detection fails

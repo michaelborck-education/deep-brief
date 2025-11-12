@@ -178,7 +178,7 @@ class AudioExtractor:
                     )  # type: ignore[reportUnknownMemberType,reportUnknownArgumentType]
             except subprocess.TimeoutExpired as e:
                 raise AudioProcessingError(
-                    message=f"Audio extraction timed out",
+                    message="Audio extraction timed out",
                     file_path=video_info.file_path,
                     cause=e,
                 ) from e
@@ -227,14 +227,16 @@ class AudioExtractor:
             raise
         except ffmpeg.Error as e:
             # Handle ffmpeg-specific errors
-            raise handle_ffmpeg_error(e, "audio extraction", video_info.file_path)
+            raise handle_ffmpeg_error(
+                e, "audio extraction", video_info.file_path
+            ) from e
         except Exception as e:
             # Handle any other unexpected errors
             raise AudioProcessingError(
                 message=f"Unexpected error during audio extraction: {str(e)}",
                 file_path=video_info.file_path,
                 cause=e,
-            )
+            ) from e
 
     def extract_audio_segment(
         self,

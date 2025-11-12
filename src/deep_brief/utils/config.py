@@ -151,7 +151,7 @@ class VisualAnalysisConfig(BaseModel):
     ocr_text_min_length: int = Field(default=3, ge=1, le=50)
     detect_slide_text: bool = Field(default=True)
     detect_ui_text: bool = Field(default=False)
-    
+
     # Object detection settings
     enable_object_detection: bool = Field(default=True)
     object_detection_model: str = Field(default="heuristic")  # heuristic, yolov5, etc.
@@ -198,7 +198,9 @@ class VisualAnalysisConfig(BaseModel):
         """Validate captioning backend."""
         valid_backends = {"local", "api"}
         if v.lower() not in valid_backends:
-            raise ValueError(f"Invalid captioning backend: {v}. Valid options: {valid_backends}")
+            raise ValueError(
+                f"Invalid captioning backend: {v}. Valid options: {valid_backends}"
+            )
         return v.lower()
 
     @field_validator("api_provider")
@@ -207,7 +209,9 @@ class VisualAnalysisConfig(BaseModel):
         """Validate API provider."""
         valid_providers = {"anthropic", "openai", "google"}
         if v.lower() not in valid_providers:
-            raise ValueError(f"Invalid API provider: {v}. Valid options: {valid_providers}")
+            raise ValueError(
+                f"Invalid API provider: {v}. Valid options: {valid_providers}"
+            )
         return v.lower()
 
     @field_validator("ocr_engine")

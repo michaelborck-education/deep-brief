@@ -2,7 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -500,7 +500,7 @@ class TestOCRDetector:
         detector = OCRDetector(config=mock_config)
 
         # Mock detect_text to succeed for first image, fail for second
-        def mock_detect_text(*args, **kwargs):
+        def mock_detect_text(*_args, **_kwargs):
             if not hasattr(mock_detect_text, "call_count"):
                 mock_detect_text.call_count = 0
             mock_detect_text.call_count += 1

@@ -11,13 +11,13 @@ import logging
 import time
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from PIL import Image
 from pydantic import BaseModel
 
-from deep_brief.utils.api_keys import get_api_key_with_validation
+from deep_brief.utils.api_keys import APIProvider, get_api_key_with_validation
 from deep_brief.utils.config import get_config
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class APIImageCaptioner:
         # Get API key (don't use api_key_env_var config as it's provider-specific)
         # The get_api_key_with_validation will use the correct env var based on provider
         self.api_key, status_msg = get_api_key_with_validation(
-            provider=self.provider,
+            provider=cast("APIProvider", self.provider),
             env_var_name=None,  # Let it auto-detect based on provider
             log_result=True,
         )
@@ -78,7 +78,7 @@ class APIImageCaptioner:
             if len(image.shape) == 3 and image.shape[2] == 3:
                 image = image[:, :, ::-1]  # BGR to RGB
             pil_image = Image.fromarray(image)
-        elif isinstance(image, Path) or isinstance(image, str):
+        elif isinstance(image, (Path, str)):
             pil_image = Image.open(image)
         else:
             pil_image = image
@@ -102,16 +102,14 @@ Focus on:
 
 Provide a single paragraph caption (2-4 sentences) that would help someone understand the content without seeing the image."""
 
-    async def _caption_with_anthropic(
-        self, image_base64: str
-    ) -> dict[str, Any]:
+    async def _caption_with_anthropic(self, image_base64: str) -> dict[str, Any]:
         """Caption image using Anthropic Claude API."""
         try:
             import anthropic
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "anthropic package required for API captioning. Install with: pip install anthropic"
-            )
+            ) from e
 
         client = anthropic.Anthropic(api_key=self.api_key)
 
@@ -137,17 +135,23 @@ Provide a single paragraph caption (2-4 sentences) that would help someone under
                 ],
             )
 
-            caption = message.content[0].text
-            tokens_in = message.usage.input_tokens
-            tokens_out = message.usage.output_tokens
+            caption = message.content[0].text  # type: ignore
+            tokens_in = message.usage.input_tokens  # type: ignore
+            tokens_out = message.usage.output_tokens  # type: ignore
             tokens_total = tokens_in + tokens_out
 
             # Claude 4.x pricing (per million tokens)
             # Source: https://www.anthropic.com/pricing
             pricing = {
                 "claude-haiku-4-5": (0.80, 4.00),  # $0.80 input, $4.00 output per MTok
-                "claude-sonnet-4-5": (3.00, 15.00),  # $3.00 input, $15.00 output per MTok
-                "claude-opus-4-1": (15.00, 75.00),  # $15.00 input, $75.00 output per MTok
+                "claude-sonnet-4-5": (
+                    3.00,
+                    15.00,
+                ),  # $3.00 input, $15.00 output per MTok
+                "claude-opus-4-1": (
+                    15.00,
+                    75.00,
+                ),  # $15.00 input, $75.00 output per MTok
                 # Legacy 3.x models
                 "claude-3-5-sonnet-20241022": (3.00, 15.00),
             }
@@ -174,10 +178,10 @@ Provide a single paragraph caption (2-4 sentences) that would help someone under
         """Caption image using OpenAI GPT-4V API."""
         try:
             import openai
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "openai package required for API captioning. Install with: pip install openai"
-            )
+            ) from e
 
         client = openai.OpenAI(api_key=self.api_key)
 
@@ -201,10 +205,10 @@ Provide a single paragraph caption (2-4 sentences) that would help someone under
                 max_tokens=1024,
             )
 
-            caption = response.choices[0].message.content
-            tokens_in = response.usage.prompt_tokens
-            tokens_out = response.usage.completion_tokens
-            tokens_total = response.usage.total_tokens
+            caption = response.choices[0].message.content or ""
+            tokens_in = response.usage.prompt_tokens  # type: ignore
+            tokens_out = response.usage.completion_tokens  # type: ignore
+            tokens_total = response.usage.total_tokens  # type: ignore
 
             # OpenAI pricing (per million tokens)
             # Source: https://openai.com/api/pricing/
@@ -236,35 +240,50 @@ Provide a single paragraph caption (2-4 sentences) that would help someone under
         """Caption image using Google Gemini API."""
         try:
             import google.generativeai as genai
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "google-generativeai package required for API captioning. Install with: pip install google-generativeai"
-            )
+            ) from e
 
-        genai.configure(api_key=self.api_key)
+        genai.configure(api_key=self.api_key)  # type: ignore
 
         try:
-            model = genai.GenerativeModel(self.model)
+            model = genai.GenerativeModel(self.model)  # type: ignore
 
             # Decode base64 to bytes for Gemini
             image_bytes = base64.b64decode(image_base64)
 
-            response = model.generate_content([
-                self._get_caption_prompt(),
-                {"mime_type": "image/jpeg", "data": image_bytes}
-            ])
+            response = model.generate_content(
+                [
+                    self._get_caption_prompt(),
+                    {"mime_type": "image/jpeg", "data": image_bytes},
+                ]
+            )
 
             caption = response.text
 
             # Get token usage from Gemini response
-            tokens_in = response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') else None
-            tokens_out = response.usage_metadata.candidates_token_count if hasattr(response, 'usage_metadata') else None
-            tokens_total = (tokens_in + tokens_out) if (tokens_in and tokens_out) else None
+            tokens_in = (
+                response.usage_metadata.prompt_token_count
+                if hasattr(response, "usage_metadata")
+                else None
+            )
+            tokens_out = (
+                response.usage_metadata.candidates_token_count
+                if hasattr(response, "usage_metadata")
+                else None
+            )
+            tokens_total = (
+                (tokens_in + tokens_out) if (tokens_in and tokens_out) else None
+            )
 
             # Gemini pricing (per million tokens)
             # Source: https://ai.google.dev/pricing
             pricing = {
-                "gemini-2.5-flash": (0.075, 0.30),  # $0.075 input, $0.30 output per MTok
+                "gemini-2.5-flash": (
+                    0.075,
+                    0.30,
+                ),  # $0.075 input, $0.30 output per MTok
                 "gemini-1.5-flash": (0.075, 0.30),  # Same pricing
                 "gemini-1.5-pro": (1.25, 5.00),  # $1.25 input, $5.00 output per MTok
             }
@@ -324,7 +343,7 @@ Provide a single paragraph caption (2-4 sentences) that would help someone under
 
                 processing_time = time.time() - start_time
 
-                cost = result.get('cost') or 0.0
+                cost = result.get("cost") or 0.0
                 logger.debug(
                     f"Caption generated in {processing_time:.2f}s, "
                     f"tokens={result.get('tokens')}, cost=${cost:.4f}"
@@ -355,9 +374,7 @@ Provide a single paragraph caption (2-4 sentences) that would help someone under
             f"Failed to caption image after {self.max_retries} retries: {last_error}"
         )
 
-    def caption_image(
-        self, image: np.ndarray | Image.Image | Path
-    ) -> APICaptionResult:
+    def caption_image(self, image: np.ndarray | Image.Image | Path) -> APICaptionResult:
         """
         Caption a single image (synchronous wrapper).
 
@@ -384,16 +401,18 @@ Provide a single paragraph caption (2-4 sentences) that would help someone under
         # Create semaphore to limit concurrent requests
         semaphore = asyncio.Semaphore(self.max_concurrent)
 
-        async def caption_with_semaphore(image):
+        async def caption_with_semaphore(image: Any) -> APICaptionResult:
             async with semaphore:
                 return await self._caption_single_image_async(image)
 
         # Caption all images concurrently
         tasks = [caption_with_semaphore(img) for img in images]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        results: list[APICaptionResult | BaseException] = await asyncio.gather(
+            *tasks, return_exceptions=True
+        )
 
         # Handle any errors
-        final_results = []
+        final_results: list[APICaptionResult] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.error(f"Failed to caption image {i}: {result}")
@@ -401,14 +420,14 @@ Provide a single paragraph caption (2-4 sentences) that would help someone under
                 final_results.append(
                     APICaptionResult(
                         caption=f"Error: {str(result)}",
-                        processing_time=0.0,
                         provider=self.provider,
                         model=self.model,
-                        confidence=0.0,
+                        processing_time=0.0,
                     )
                 )
             else:
-                final_results.append(result)
+                # result is APICaptionResult here (not BaseException)
+                final_results.append(result)  # type: ignore
 
         return final_results
 
