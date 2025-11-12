@@ -44,7 +44,7 @@ def analyze(
     api_model: str | None = typer.Option(
         None,
         "--api-model",
-        help="API model to use (e.g., claude-3-5-sonnet-20241022, gpt-4o)",
+        help="API model to use (e.g., claude-haiku-4-5, gpt-4o)",
     ),
     use_api: bool = typer.Option(
         False,
@@ -771,7 +771,7 @@ def _generate_grading_feedback(
 
         client = Anthropic(api_key=api_key)
         response = client.messages.create(
-            model=api_model or "claude-3-5-sonnet-20241022",
+            model=api_model or "claude-haiku-4-5",
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )

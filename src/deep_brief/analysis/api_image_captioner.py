@@ -152,8 +152,6 @@ Provide a single paragraph caption (2-4 sentences) that would help someone under
                     15.00,
                     75.00,
                 ),  # $15.00 input, $75.00 output per MTok
-                # Legacy 3.x models
-                "claude-3-5-sonnet-20241022": (3.00, 15.00),
             }
 
             # Get pricing for current model, default to Sonnet if unknown
