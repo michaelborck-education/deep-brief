@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "deep-brief"
-version = "0.3.4"
+version = "0.3.5"
 description = "A video analysis application for presentation feedback"
 authors = [{name = "Michael Borck", email = "michael@example.com"}]
 readme = "README.md"
