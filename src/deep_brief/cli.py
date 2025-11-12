@@ -394,10 +394,14 @@ def _analyze_video_cli(
                     )
 
                 # Prepare analysis data for grading
-                grading_data = {
-                    "video_info": result.video_info.to_dict()
-                    if hasattr(result.video_info, "to_dict")
-                    else {},
+                video_info_dict: dict[str, Any] = {}
+                if hasattr(result.video_info, "model_dump"):
+                    video_info_dict = result.video_info.model_dump()  # type: ignore[attr-defined]
+                elif hasattr(result.video_info, "to_dict"):
+                    video_info_dict = result.video_info.to_dict()  # type: ignore[attr-defined]
+
+                grading_data: dict[str, Any] = {
+                    "video_info": video_info_dict,
                     "processing_time": processing_time,
                 }
                 if speech_analysis:
@@ -736,16 +740,22 @@ def _generate_grading_feedback(
     from deep_brief.utils.api_keys import get_api_key
 
     # Determine API provider
-    if not api_provider:
+    if api_provider:
+        provider: str = api_provider
+    else:
         # Try to auto-detect from config
         config = get_config()
-        api_provider = getattr(config.api_settings, "default_provider", "anthropic")
+        api_settings = getattr(config, "api_settings", {})
+        if isinstance(api_settings, dict):
+            provider = str(api_settings.get("default_provider", "anthropic"))  # type: ignore[arg-type]
+        else:
+            provider = str(getattr(api_settings, "default_provider", "anthropic"))  # type: ignore[arg-type]
 
-    api_key = get_api_key(api_provider)
+    api_key = get_api_key(provider)  # type: ignore[arg-type]
     if not api_key:
         console.print(
-            f"[red]✗ No API key found for {api_provider}[/red]\n"
-            f"[dim]Set {api_provider.upper()}_API_KEY environment variable[/dim]"
+            f"[red]✗ No API key found for {provider}[/red]\n"
+            f"[dim]Set {provider.upper()}_API_KEY environment variable[/dim]"
         )
         raise typer.Exit(1)
 
@@ -753,8 +763,10 @@ def _generate_grading_feedback(
     prompt = _build_grading_prompt(rubric, analysis_data)
 
     # Call appropriate LLM
-    feedback_text = None
-    if api_provider.lower() == "anthropic":
+    feedback_text: str = ""
+    provider_lower = provider.lower()
+    assert isinstance(provider_lower, str)  # For type checker
+    if provider_lower == "anthropic":
         from anthropic import Anthropic
 
         client = Anthropic(api_key=api_key)
@@ -763,9 +775,12 @@ def _generate_grading_feedback(
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
-        feedback_text = response.content[0].text
+        if response.content:
+            content_block = response.content[0]
+            if hasattr(content_block, "text"):
+                feedback_text = content_block.text  # type: ignore[attr-defined]
 
-    elif api_provider.lower() == "openai":
+    elif provider_lower == "openai":
         from openai import OpenAI
 
         client = OpenAI(api_key=api_key)
@@ -774,68 +789,90 @@ def _generate_grading_feedback(
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
-        feedback_text = response.choices[0].message.content
+        if response.choices and response.choices[0].message.content:
+            feedback_text = response.choices[0].message.content
 
-    elif api_provider.lower() == "google":
+    elif provider_lower == "google":
         import google.generativeai as genai
 
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(api_model or "gemini-2.0-flash")
-        response = model.generate_content(prompt)
-        feedback_text = response.text
+        genai.configure(api_key=api_key)  # type: ignore[attr-defined]
+        model = genai.GenerativeModel(api_model or "gemini-2.0-flash")  # type: ignore[attr-defined]
+        response = model.generate_content(prompt)  # type: ignore[attr-defined]
+        if response.text:  # type: ignore[attr-defined]
+            feedback_text = response.text  # type: ignore[attr-defined]
 
     if not feedback_text:
         console.print("[red]✗ Failed to generate feedback[/red]")
         raise typer.Exit(1)
 
-    return feedback_text
+    return feedback_text  # type: ignore[return-value]
 
 
-def _build_grading_prompt(rubric, analysis_data):
-    """Build the prompt for LLM grading."""
+def _build_grading_prompt(rubric: Any, analysis_data: dict[str, Any]) -> str:  # type: ignore[return]
+    """Build the prompt for LLM grading.
+
+    Args:
+        rubric: Rubric object with categories, criteria, and scoring scale
+        analysis_data: Analysis data dictionary to include in prompt
+
+    Returns:
+        Formatted prompt string for LLM evaluation
+    """
     import json
 
-    prompt = f"""You are an expert presentation evaluator. Please evaluate the following presentation based on the provided rubric.
+    rubric_name = str(rubric.name)  # type: ignore[attr-defined]
+    rubric_desc = str(rubric.description or "")  # type: ignore[attr-defined]
 
-## Rubric: {rubric.name}
-{rubric.description or ""}
+    prompt: str = (
+        "You are an expert presentation evaluator. Please evaluate the "
+        "following presentation based on the provided rubric.\n\n"
+        "## Rubric: "
+        + rubric_name
+        + "\n"
+        + rubric_desc
+        + "\n\n"
+        + "### Rubric Categories and Criteria:\n"
+    )
 
-### Rubric Categories and Criteria:
-"""
+    for category in rubric.categories:  # type: ignore[union-attr]
+        cat_name = str(category.name)  # type: ignore[attr-defined]
+        cat_weight = str(category.weight)  # type: ignore[attr-defined]
+        cat_desc = str(category.description or "")  # type: ignore[attr-defined]
+        prompt += "\n**" + cat_name + "** (weight: " + cat_weight + ")\n"
+        prompt += cat_desc + "\n\n"
+        for criterion in category.criteria:  # type: ignore[union-attr]
+            crit_name = str(criterion.name)  # type: ignore[attr-defined]
+            crit_desc = str(criterion.description or "")  # type: ignore[attr-defined]
+            prompt += "- " + crit_name + ": " + crit_desc + "\n"
+            if criterion.scoring_guide:  # type: ignore[union-attr]
+                guide = str(criterion.scoring_guide)  # type: ignore[attr-defined]
+                prompt += "  Scoring guide: " + guide + "\n"
 
-    for category in rubric.categories:
-        prompt += f"\n**{category.name}** (weight: {category.weight})\n"
-        prompt += f"{category.description or ''}\n\n"
-        for criterion in category.criteria:
-            prompt += f"- {criterion.name}: {criterion.description or ''}\n"
-            if criterion.scoring_guide:
-                prompt += f"  Scoring guide: {criterion.scoring_guide}\n"
+    prompt += "\n### Scoring Scale:\n"
+    scoring_items: list[tuple[Any, Any]] = sorted(rubric.scoring_scale.labels.items())  # type: ignore[union-attr]
+    for score, label in scoring_items:
+        prompt += "- " + str(score) + ": " + str(label) + "\n"
 
-    prompt += """
+    max_score = str(rubric.scoring_scale.max_score)  # type: ignore[union-attr]
+    analysis_json = json.dumps(analysis_data, indent=2, default=str)
 
-### Scoring Scale:
-"""
-    for score, label in sorted(rubric.scoring_scale.labels.items()):
-        prompt += f"- {score}: {label}\n"
+    # Build closing section explicitly to avoid LiteralString type issues
+    closing = "\n\nPlease provide:\n"
+    closing += "1. An overall assessment\n"
+    closing += "2. Scores for each criterion (1-" + max_score + ")\n"
+    closing += "3. Specific feedback for each category\n"
+    closing += "4. Key strengths\n"
+    closing += "5. Areas for improvement\n"
+    closing += "6. Recommendations for next time\n"
+    closing += "\nFormat the response clearly with sections for each category."
 
-    prompt += f"""
+    prompt_end: str = "\n\n### Presentation Analysis Data:\n```json\n"
+    prompt_end += analysis_json
+    prompt_end += "\n```"
+    prompt_end += closing
 
-### Presentation Analysis Data:
-```json
-{json.dumps(analysis_data, indent=2, default=str)}
-```
-
-Please provide:
-1. An overall assessment
-2. Scores for each criterion (1-{rubric.scoring_scale.max_score})
-3. Specific feedback for each category
-4. Key strengths
-5. Areas for improvement
-6. Recommendations for next time
-
-Format the response clearly with sections for each category."""
-
-    return prompt
+    result: str = prompt + prompt_end  # type: ignore[assignment]
+    return result
 
 
 def main() -> None:
