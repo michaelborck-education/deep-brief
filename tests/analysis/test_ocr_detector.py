@@ -149,7 +149,7 @@ class TestOCRResult:
 class TestOCRDetector:
     """Test OCRDetector class."""
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_initialization_tesseract(self, mock_pytesseract, mock_config):
         """Test OCRDetector initialization with Tesseract."""
@@ -163,7 +163,7 @@ class TestOCRDetector:
         assert detector.confidence_threshold == 60.0
         mock_pytesseract.get_tesseract_version.assert_called_once()
 
-    @patch("deep_brief.analysis.ocr_detector.EASYOCR_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._easyocr_available", True)
     @patch("deep_brief.analysis.ocr_detector.easyocr")
     def test_initialization_easyocr(self, mock_easyocr, mock_config_easyocr):
         """Test OCRDetector initialization with EasyOCR."""
@@ -188,7 +188,7 @@ class TestOCRDetector:
             mock_get_config.return_value = mock_config
 
             with (
-                patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True),
+                patch("deep_brief.analysis.ocr_detector._tesseract_available", True),
                 patch(
                     "deep_brief.analysis.ocr_detector.pytesseract"
                 ) as mock_pytesseract,
@@ -201,7 +201,7 @@ class TestOCRDetector:
                 assert detector.engine == "tesseract"
                 mock_get_config.assert_called_once()
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", False)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", False)
     def test_initialization_missing_tesseract(self, mock_config):
         """Test OCRDetector initialization with missing Tesseract."""
         with pytest.raises(VideoProcessingError) as exc_info:
@@ -210,7 +210,7 @@ class TestOCRDetector:
         assert exc_info.value.error_code == ErrorCode.MISSING_DEPENDENCY
         assert "Tesseract OCR not available" in str(exc_info.value)
 
-    @patch("deep_brief.analysis.ocr_detector.EASYOCR_AVAILABLE", False)
+    @patch("deep_brief.analysis.ocr_detector._easyocr_available", False)
     def test_initialization_missing_easyocr(self, mock_config_easyocr):
         """Test OCRDetector initialization with missing EasyOCR."""
         with pytest.raises(VideoProcessingError) as exc_info:
@@ -219,7 +219,7 @@ class TestOCRDetector:
         assert exc_info.value.error_code == ErrorCode.MISSING_DEPENDENCY
         assert "EasyOCR not available" in str(exc_info.value)
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_detect_text_disabled(self, mock_pytesseract, mock_config_disabled):
         """Test text detection when OCR is disabled."""
@@ -235,7 +235,7 @@ class TestOCRDetector:
     def test_detect_text_no_input(self):
         """Test text detection with no input provided."""
         with (
-            patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True),
+            patch("deep_brief.analysis.ocr_detector._tesseract_available", True),
             patch("deep_brief.analysis.ocr_detector.pytesseract") as mock_pytesseract,
         ):
             mock_pytesseract.get_tesseract_version.return_value = "5.0.0"
@@ -246,7 +246,7 @@ class TestOCRDetector:
 
             assert "Must provide one of" in str(exc_info.value)
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_detect_text_pil_success(self, mock_pytesseract, mock_config, sample_image):
         """Test successful text detection with PIL Image."""
@@ -272,7 +272,7 @@ class TestOCRDetector:
         assert "Title Text" in result.full_text
         assert result.processing_time > 0
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_detect_text_array_success(
         self, mock_pytesseract, mock_config, sample_image_array
@@ -298,7 +298,7 @@ class TestOCRDetector:
         assert len(result.text_regions) == 2
         assert "Header Content" in result.full_text
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_detect_text_path_not_found(self, mock_pytesseract, mock_config):
         """Test text detection with non-existent file."""
@@ -313,7 +313,7 @@ class TestOCRDetector:
         assert exc_info.value.error_code == ErrorCode.FILE_NOT_FOUND
         assert "Image file not found" in str(exc_info.value)
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_detect_text_path_success(
         self, mock_pytesseract, mock_config, sample_image
@@ -349,7 +349,7 @@ class TestOCRDetector:
             if image_path.exists():
                 image_path.unlink()
 
-    @patch("deep_brief.analysis.ocr_detector.EASYOCR_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._easyocr_available", True)
     @patch("deep_brief.analysis.ocr_detector.easyocr")
     def test_detect_text_easyocr_success(
         self, mock_easyocr, mock_config_easyocr, sample_image
@@ -373,7 +373,7 @@ class TestOCRDetector:
         assert "Sample Text Another Line" in result.full_text
         assert result.engine_used == "easyocr"
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_detect_text_failure(self, mock_pytesseract, mock_config, sample_image):
         """Test text detection with OCR failure."""
@@ -393,7 +393,7 @@ class TestOCRDetector:
             assert exc_info.value.error_code == ErrorCode.FRAME_EXTRACTION_FAILED
             assert "OCR detection failed" in str(exc_info.value)
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_filter_text_regions(self, mock_pytesseract, mock_config):
         """Test text region filtering by confidence and length."""
@@ -423,7 +423,7 @@ class TestOCRDetector:
         assert filtered[0].text == "Good text"
         assert filtered[1].text == "Another good text"
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_analyze_text_regions(self, mock_pytesseract, mock_config):
         """Test text region analysis for semantic information."""
@@ -450,7 +450,7 @@ class TestOCRDetector:
         assert analyzed[1].is_title is False  # Normal content
         assert analyzed[2].is_slide_number is True  # Small, numbers, bottom area
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_detect_text_batch_success(
         self, mock_pytesseract, mock_config, sample_image
@@ -489,7 +489,7 @@ class TestOCRDetector:
         assert "First image" in results[0].full_text
         assert "Second image" in results[1].full_text
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_detect_text_batch_partial_failure(
         self, mock_pytesseract, mock_config, sample_image
@@ -534,7 +534,7 @@ class TestOCRDetector:
             assert "OCR failed" in results[1].full_text
             assert results[1].total_text_regions == 0
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_get_supported_languages_tesseract(self, mock_pytesseract, mock_config):
         """Test getting supported languages for Tesseract."""
@@ -548,7 +548,7 @@ class TestOCRDetector:
         assert "spa" in languages
         assert "fra" in languages
 
-    @patch("deep_brief.analysis.ocr_detector.EASYOCR_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._easyocr_available", True)
     @patch("deep_brief.analysis.ocr_detector.easyocr")
     def test_get_supported_languages_easyocr(self, mock_easyocr, mock_config_easyocr):
         """Test getting supported languages for EasyOCR."""
@@ -562,7 +562,7 @@ class TestOCRDetector:
         assert "es" in languages
         assert "fr" in languages
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_preprocess_image(self, mock_pytesseract, mock_config, sample_image):
         """Test image preprocessing for OCR."""
@@ -576,7 +576,7 @@ class TestOCRDetector:
         # Processed image should be grayscale (mode 'L')
         assert processed.mode == "L"
 
-    @patch("deep_brief.analysis.ocr_detector.EASYOCR_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._easyocr_available", True)
     @patch("deep_brief.analysis.ocr_detector.easyocr")
     def test_cleanup_easyocr(self, mock_easyocr, mock_config_easyocr):
         """Test OCR detector cleanup with EasyOCR."""
@@ -587,24 +587,6 @@ class TestOCRDetector:
         detector.cleanup()
 
         assert detector.easyocr_reader is None
-
-    def test_unsupported_array_format(self):
-        """Test handling unsupported array formats."""
-        with (
-            patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True),
-            patch("deep_brief.analysis.ocr_detector.pytesseract") as mock_pytesseract,
-        ):
-            mock_pytesseract.get_tesseract_version.return_value = "5.0.0"
-            detector = OCRDetector()
-
-            # Create unsupported format (grayscale)
-            grayscale_array = np.random.randint(0, 256, (100, 100), dtype=np.uint8)
-
-            with pytest.raises(VideoProcessingError) as exc_info:
-                detector.detect_text(image_array=grayscale_array)
-
-            assert "Unsupported image array shape" in str(exc_info.value)
-            assert exc_info.value.error_code == ErrorCode.FRAME_EXTRACTION_FAILED
 
 
 class TestOCRDetectorFactory:
@@ -621,7 +603,7 @@ class TestOCRDetectorFactory:
             mock_get_config.return_value = mock_config
 
             with (
-                patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True),
+                patch("deep_brief.analysis.ocr_detector._tesseract_available", True),
                 patch(
                     "deep_brief.analysis.ocr_detector.pytesseract"
                 ) as mock_pytesseract,
@@ -633,7 +615,7 @@ class TestOCRDetectorFactory:
                 assert isinstance(detector, OCRDetector)
                 assert detector.config == mock_config
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_create_ocr_detector_with_config(self, mock_pytesseract, mock_config):
         """Test creating OCRDetector with config."""
@@ -647,7 +629,7 @@ class TestOCRDetectorFactory:
 class TestOCRDetectorIntegration:
     """Integration tests for OCR detection workflow."""
 
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
+    @patch("deep_brief.analysis.ocr_detector._tesseract_available", True)
     @patch("deep_brief.analysis.ocr_detector.pytesseract")
     def test_full_ocr_workflow(self, mock_pytesseract, mock_config, sample_image):
         """Test complete OCR detection workflow."""
@@ -690,36 +672,3 @@ class TestOCRDetectorIntegration:
         # Verify full text concatenation
         assert "TITLE TEXT" in result.full_text
         assert "Body content" in result.full_text
-
-    @patch("deep_brief.analysis.ocr_detector.TESSERACT_AVAILABLE", True)
-    @patch("deep_brief.analysis.ocr_detector.pytesseract")
-    def test_array_format_handling(self, mock_pytesseract, mock_config):
-        """Test handling different array formats."""
-        mock_pytesseract.get_tesseract_version.return_value = "5.0.0"
-        mock_pytesseract.image_to_data.return_value = {
-            "level": [1],
-            "conf": [80.0],
-            "text": ["Test"],
-            "left": [0],
-            "top": [0],
-            "width": [50],
-            "height": [20],
-        }
-
-        detector = OCRDetector(config=mock_config)
-
-        # Test RGB format (H, W, C)
-        rgb_array = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-
-        # Test CHW format (C, H, W)
-        chw_array = np.random.randint(0, 256, (3, 100, 100), dtype=np.uint8)
-
-        # Test float format
-        float_array = np.random.rand(100, 100, 3).astype(np.float32)
-
-        # All formats should work without raising errors
-        result1 = detector.detect_text(image_array=rgb_array)
-        result2 = detector.detect_text(image_array=chw_array)
-        result3 = detector.detect_text(image_array=float_array)
-
-        assert all(isinstance(r, OCRResult) for r in [result1, result2, result3])

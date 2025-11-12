@@ -126,7 +126,7 @@ class VisualAnalysisConfig(BaseModel):
 
     # Image captioning settings
     enable_captioning: bool = Field(default=True)
-    captioning_backend: str = Field(default="local")  # local, api
+    captioning_backend: str = Field(default="api")  # local, api
 
     # Local captioning model settings
     captioning_model: str = Field(default="Salesforce/blip2-opt-2.7b")

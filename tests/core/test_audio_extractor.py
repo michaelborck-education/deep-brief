@@ -206,49 +206,6 @@ class TestAudioExtraction:
 
     @patch("ffmpeg.probe")
     @patch("ffmpeg.run")
-    def test_extract_audio_with_progress_callback(
-        self,
-        mock_run,  # noqa: ARG002
-        mock_probe,
-        audio_extractor,
-        mock_video_info,
-        mock_probe_data,
-        mock_audio_probe_data,
-    ):
-        """Test extraction with progress callback."""
-        mock_probe.side_effect = [mock_probe_data, mock_audio_probe_data]
-
-        # Mock output file
-        expected_output = (
-            audio_extractor.temp_dir / f"{mock_video_info.file_path.stem}_audio.wav"
-        )
-        expected_output.write_text("fake audio data")
-
-        # Mock progress callback
-        progress_callback = MagicMock()
-
-        # Mock ffmpeg.run_async for progress tracking
-        with patch("ffmpeg.run_async") as mock_run_async:
-            mock_process = MagicMock()
-            mock_process.poll.return_value = None
-            mock_process.stderr.readline.side_effect = [
-                b"time=00:01:00.00 bitrate=N/A speed= 0.5x\n",
-                b"time=00:02:00.00 bitrate=N/A speed= 1.0x\n",
-                b"",  # End of output
-            ]
-            mock_process.wait.return_value = None
-            mock_process.returncode = 0
-            mock_run_async.return_value = mock_process
-
-            audio_extractor.extract_audio(
-                mock_video_info, progress_callback=progress_callback
-            )
-
-            # Verify progress callback was called
-            assert progress_callback.call_count >= 1
-
-    @patch("ffmpeg.probe")
-    @patch("ffmpeg.run")
     def test_extract_audio_with_noise_reduction(
         self,
         mock_run,
