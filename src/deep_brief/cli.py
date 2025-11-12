@@ -375,16 +375,23 @@ def _analyze_video_cli(
                             f"[dim]Available: academic, business, teaching, general[/dim]"
                         )
                         raise typer.Exit(1)
-                    console.print(f"[cyan]→[/cyan] Using rubric: [bold]{rubric.name}[/bold]")
+                    console.print(
+                        f"[cyan]→[/cyan] Using rubric: [bold]{rubric.name}[/bold]"
+                    )
                 else:
                     if not rubric_file or not rubric_file.exists():
-                        console.print(f"[red]✗ Rubric file not found: {rubric_file}[/red]")
+                        console.print(
+                            f"[red]✗ Rubric file not found: {rubric_file}[/red]"
+                        )
                         raise typer.Exit(1)
                     import json
+
                     with open(rubric_file) as f:
                         rubric_data = json.load(f)
                     rubric = Rubric.from_dict(rubric_data)
-                    console.print(f"[cyan]→[/cyan] Using rubric: [bold]{rubric.name}[/bold]")
+                    console.print(
+                        f"[cyan]→[/cyan] Using rubric: [bold]{rubric.name}[/bold]"
+                    )
 
                 # Prepare analysis data for grading
                 grading_data = {
@@ -706,7 +713,10 @@ def _rubric_delete(repo: "RubricRepository", rubric_id: str) -> None:
 
 
 def _generate_grading_feedback(
-    rubric: Any, analysis_data: dict[str, Any], api_provider: str | None = None, api_model: str | None = None
+    rubric: Any,
+    analysis_data: dict[str, Any],
+    api_provider: str | None = None,
+    api_model: str | None = None,
 ) -> str:
     """
     Generate grading feedback using LLM.
