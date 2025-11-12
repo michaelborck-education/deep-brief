@@ -322,8 +322,8 @@ class VisualAnalysisResult(BaseModel):
         scenes_with_issues = sum(1 for report in scene_reports if report["issues"])
 
         # Generate overall recommendations
-        all_recommendations = []
-        recommendation_counts = {}
+        all_recommendations: list[str] = []
+        recommendation_counts: dict[str, int] = {}
         for report in scene_reports:
             for rec in report["recommendations"]:
                 recommendation_counts[rec] = recommendation_counts.get(rec, 0) + 1
@@ -332,7 +332,9 @@ class VisualAnalysisResult(BaseModel):
 
         # Sort recommendations by frequency
         sorted_recommendations: list[str] = sorted(
-            all_recommendations, key=lambda x: recommendation_counts[x], reverse=True
+            all_recommendations,
+            key=lambda x: recommendation_counts.get(x, 0),
+            reverse=True,
         )[:5]  # Top 5 recommendations
 
         return {
@@ -427,6 +429,7 @@ class FrameExtractor:
             f"Extracting frames from {len(scene_result.scenes)} scenes: {video_path.name}"
         )
 
+        cap: cv2.VideoCapture | None = None
         try:
             # Open video capture
             cap = cv2.VideoCapture(str(video_path))
@@ -443,10 +446,10 @@ class FrameExtractor:
                 fps = 30.0  # Default fallback
                 logger.warning(f"Invalid FPS detected, using fallback: {fps}")
 
-            scene_analyses = []
+            scene_analyses: list[SceneFrameAnalysis] = []
             total_frames_extracted = 0
             total_frames_processed = 0
-            best_frames_per_scene = []
+            best_frames_per_scene: list[ExtractedFrame] = []
 
             # Process each scene
             for scene in scene_result.scenes:
@@ -486,13 +489,15 @@ class FrameExtractor:
 
             for scene_analysis in scene_analyses:
                 for category, count in scene_analysis.quality_distribution.items():
-                    overall_quality_distribution[category] += count
+                    overall_quality_distribution[category] = (
+                        overall_quality_distribution.get(category, 0) + count
+                    )
 
                 for frame in scene_analysis.frames:
                     total_quality_score += frame.quality_metrics.overall_quality_score
                     total_frames_for_avg += 1
 
-            average_quality_score = (
+            average_quality_score: float = (
                 total_quality_score / total_frames_for_avg
                 if total_frames_for_avg > 0
                 else 0.0
@@ -522,7 +527,7 @@ class FrameExtractor:
             return result
 
         except Exception as e:
-            if hasattr(locals(), "cap"):
+            if cap is not None:
                 cap.release()
 
             error_msg = f"Frame extraction failed: {str(e)}"
@@ -563,7 +568,7 @@ class FrameExtractor:
                 )
                 frame_positions.append(position)
 
-        extracted_frames = []
+        extracted_frames: list[ExtractedFrame] = []
         total_frames_processed = 0
         frames_filtered_by_quality = 0
 
@@ -603,6 +608,7 @@ class FrameExtractor:
                 continue
 
             # Assess frame quality with error recovery
+            quality_metrics: FrameQualityMetrics | None = None
             with ErrorRecoveryContext(
                 f"quality assessment for frame at {timestamp:.1f}s",
                 suppress_errors=True,
@@ -612,6 +618,10 @@ class FrameExtractor:
                     logger.warning(f"Quality assessment failed: {ctx.error}")
                     # Create default quality metrics
                     quality_metrics = self._create_default_quality_metrics()
+
+            # Ensure quality_metrics is assigned
+            if quality_metrics is None:
+                quality_metrics = self._create_default_quality_metrics()
 
             # Apply quality filtering if enabled
             if (
@@ -625,6 +635,7 @@ class FrameExtractor:
                 continue
 
             # Generate caption for frame with error recovery
+            caption_result: CaptionResult | None = None
             with ErrorRecoveryContext(
                 f"caption generation for frame at {timestamp:.1f}s",
                 suppress_errors=True,
@@ -635,6 +646,7 @@ class FrameExtractor:
                     caption_result = None
 
             # Perform OCR on frame with error recovery
+            ocr_result: OCRResult | None = None
             with ErrorRecoveryContext(
                 f"OCR for frame at {timestamp:.1f}s", suppress_errors=True
             ) as ctx:
@@ -644,6 +656,7 @@ class FrameExtractor:
                     ocr_result = None
 
             # Perform object detection on frame with error recovery
+            object_detection_result: ObjectDetectionResult | None = None
             with ErrorRecoveryContext(
                 f"object detection for frame at {timestamp:.1f}s", suppress_errors=True
             ) as ctx:
@@ -696,22 +709,27 @@ class FrameExtractor:
             extracted_frames.append(extracted_frame)
 
         # Find best frame (highest quality)
-        best_frame = None
+        best_frame: ExtractedFrame | None = None
         if extracted_frames:
             best_frame = max(
                 extracted_frames, key=lambda f: f.quality_metrics.overall_quality_score
             )
 
         # Calculate quality distribution
-        quality_distribution = {"excellent": 0, "good": 0, "fair": 0, "poor": 0}
+        quality_distribution: dict[str, int] = {
+            "excellent": 0,
+            "good": 0,
+            "fair": 0,
+            "poor": 0,
+        }
         total_quality_score = 0.0
 
         for frame in extracted_frames:
             category = frame.quality_metrics.overall_quality_category
-            quality_distribution[category] += 1
+            quality_distribution[category] = quality_distribution.get(category, 0) + 1
             total_quality_score += frame.quality_metrics.overall_quality_score
 
-        average_quality_score = (
+        average_quality_score: float = (
             total_quality_score / len(extracted_frames) if extracted_frames else 0.0
         )
 
@@ -880,7 +898,7 @@ class FrameExtractor:
         )
 
         # Peak analysis
-        peaks = []
+        peaks: list[int] = []
         for i in range(1, len(hist) - 1):
             if (
                 hist[i] > hist[i - 1]
@@ -903,7 +921,10 @@ class FrameExtractor:
         # Sobel edge detection
         sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
         sobel_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
-        sobel_magnitude = np.sqrt(sobel_x**2 + sobel_y**2)
+        # Type checker doesn't fully infer numpy dtype from cv2.Sobel output
+        sobel_magnitude: np.ndarray = np.sqrt(
+            sobel_x**2 + sobel_y**2  # type: ignore[arg-type]
+        )
         sobel_mean = sobel_magnitude.mean()
 
         # Canny edge detection
@@ -967,7 +988,7 @@ class FrameExtractor:
         """Analyze color distribution and saturation metrics."""
         # Convert to HSV for saturation analysis
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(hsv)
+        h, s, _v = cv2.split(hsv)
 
         # Color distribution in RGB
         b, g, r = cv2.split(frame)
@@ -1039,7 +1060,7 @@ class FrameExtractor:
             "noise_std_laplacian": float(noise_std),
             "noise_estimate_gaussian": float(noise_estimate),
             "signal_to_noise_ratio": float(snr) if snr != float("inf") else 1000.0,
-            "noise_level": self._categorize_noise_level(noise_std),
+            "noise_level": self._categorize_noise_level(float(noise_std)),
         }
 
         return noise_metrics
@@ -1068,17 +1089,21 @@ class FrameExtractor:
 
         # Extract regions around rule of thirds lines
         line_width = max(3, int(min(width, height) * 0.01))
-        thirds_regions = []
+        thirds_regions: list[float] = []
 
         # Vertical lines
         for x in thirds_x:
             region = gray[:, max(0, x - line_width) : min(width, x + line_width)]
-            thirds_regions.append(np.mean(cv2.Sobel(region, cv2.CV_64F, 1, 0, ksize=3)))
+            thirds_regions.append(
+                float(np.mean(cv2.Sobel(region, cv2.CV_64F, 1, 0, ksize=3)))
+            )
 
         # Horizontal lines
         for y in thirds_y:
             region = gray[max(0, y - line_width) : min(height, y + line_width), :]
-            thirds_regions.append(np.mean(cv2.Sobel(region, cv2.CV_64F, 0, 1, ksize=3)))
+            thirds_regions.append(
+                float(np.mean(cv2.Sobel(region, cv2.CV_64F, 0, 1, ksize=3)))
+            )
 
         # Symmetry analysis
         # Vertical symmetry
@@ -1105,7 +1130,8 @@ class FrameExtractor:
         # Find the region with highest gradient magnitude
         grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
         grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
-        grad_mag = np.sqrt(grad_x**2 + grad_y**2)
+        # Type checker doesn't fully infer numpy dtype from cv2.Sobel output
+        grad_mag: np.ndarray = np.sqrt(grad_x**2 + grad_y**2)  # type: ignore[arg-type]
 
         # Find center of mass of high gradient regions
         threshold = np.percentile(grad_mag, 90)

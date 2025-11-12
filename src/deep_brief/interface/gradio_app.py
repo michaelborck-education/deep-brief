@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import gradio as gr
+import gradio as gr  # type: ignore[import-untyped]
 
 from deep_brief.core.pipeline_coordinator import PipelineCoordinator
 from deep_brief.utils.config import get_config
@@ -27,7 +27,7 @@ class GradioInterface:
         video_file: Any,
         api_provider: str = "anthropic",
         use_api: bool = False,
-        progress=gr.Progress(),
+        progress: Any = gr.Progress(),
     ) -> tuple[str, str, str]:
         """
         Analyze uploaded video file.
@@ -84,12 +84,11 @@ class GradioInterface:
             progress(0.8, desc="Analyzing frames...")
 
             # Visual analysis
-            visual_analysis = None
+            visual_analysis: dict[str, Any] | None = None
             if result.frame_infos:
                 frame_paths = [frame.frame_path for frame in result.frame_infos]
                 visual_analysis = self.pipeline.analyze_frames(
                     frame_paths=frame_paths,
-                    scenes=result.scene_result.scenes if result.scene_result else None,
                 )
 
             progress(0.9, desc="Generating reports...")
@@ -126,7 +125,7 @@ class GradioInterface:
         """Create the Gradio interface."""
         with gr.Blocks(
             title="DeepBrief Video Analysis",
-            theme=gr.themes.Soft(),
+            theme=gr.themes.Soft(),  # type: ignore[attr-defined]
             css="""
             .gradio-container {
                 max-width: 1200px !important;
@@ -237,20 +236,21 @@ class GradioInterface:
         """Launch the Gradio interface."""
         interface = self.create_interface()
 
-        # Default launch settings
-        launch_kwargs = {
-            "server_name": "0.0.0.0",
-            "server_port": 7860,
-            "share": False,
-            "show_error": True,
-            "quiet": False,
-        }
-        launch_kwargs.update(kwargs)
+        # Default launch settings with explicit types
+        server_name: str = kwargs.get("server_name", "0.0.0.0")
+        server_port: int = kwargs.get("server_port", 7860)
+        share: bool = kwargs.get("share", False)
+        show_error: bool = kwargs.get("show_error", True)
+        quiet: bool = kwargs.get("quiet", False)
 
-        logger.info(
-            f"Launching Gradio interface on port {launch_kwargs['server_port']}"
+        logger.info(f"Launching Gradio interface on port {server_port}")
+        interface.launch(
+            server_name=server_name,
+            server_port=server_port,
+            share=share,
+            show_error=show_error,
+            quiet=quiet,
         )
-        interface.launch(**launch_kwargs)
 
 
 def create_app() -> gr.Blocks:

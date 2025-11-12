@@ -91,7 +91,7 @@ class ImageCaptioner:
         return device
 
     @with_retry(max_attempts=3, delay=2.0)
-    def _load_model(self) -> tuple[Any, Any]:
+    def _load_model(self) -> tuple[Any, Any]:  # type: ignore[misc]
         """Load captioning model and processor if not already loaded."""
         if self.model is None or self.processor is None:
             model_name = self.config.visual_analysis.captioning_model
@@ -139,7 +139,8 @@ class ImageCaptioner:
                     cause=e,
                 ) from e
 
-        return self.model, self.processor
+        # Type ignore because transformers models are untyped
+        return self.model, self.processor  # type: ignore[return-value]
 
     def caption_image(
         self,
@@ -249,22 +250,23 @@ class ImageCaptioner:
             # Generate captions
             with torch.no_grad():
                 # Adjust generation parameters based on model type
-                generation_kwargs = {
+                generation_kwargs: dict[str, Any] = {
                     "max_length": max_length,
                     "num_beams": num_beams,
                     "num_return_sequences": min(num_return_sequences, num_beams),
-                    "do_sample": temperature > 1.0,
-                    "temperature": temperature if temperature > 1.0 else None,
+                    "do_sample": temperature > 1.0 if temperature is not None else False,
                     "early_stopping": True,
-                    "pad_token_id": processor.tokenizer.pad_token_id
-                    if hasattr(processor, "tokenizer")
-                    else None,
                 }
 
-                # Remove None values
-                generation_kwargs = {
-                    k: v for k, v in generation_kwargs.items() if v is not None
-                }
+                # Add temperature if applicable
+                if temperature is not None and temperature > 1.0:
+                    generation_kwargs["temperature"] = temperature
+
+                # Add pad_token_id if available
+                if hasattr(processor, "tokenizer") and hasattr(processor.tokenizer, "pad_token_id"):
+                    pad_token_id = processor.tokenizer.pad_token_id
+                    if pad_token_id is not None:
+                        generation_kwargs["pad_token_id"] = pad_token_id
 
                 outputs = model.generate(**inputs, **generation_kwargs)
 
@@ -395,7 +397,7 @@ class ImageCaptioner:
         self,
         images: list[Path | Image.Image],
         prompts: list[str] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> list[CaptionResult]:
         """
         Generate captions for a batch of images.
@@ -445,7 +447,7 @@ class ImageCaptioner:
                         )
                     )
 
-        return results
+        return results  # type: ignore[return-value]
 
     def get_supported_models(self) -> list[str]:
         """Get list of supported captioning models."""
@@ -517,9 +519,16 @@ class ImageCaptioner:
 
             if isinstance(image_array, np.ndarray):
                 # Convert BGR to RGB if needed
-                if len(image_array.shape) == 3 and image_array.shape[2] == 3:
-                    image_array = image_array[:, :, ::-1]
-                image_input = Image.fromarray(image_array)
+                # Type: ignore for numpy array shape which is dynamic
+                arr_shape: tuple[int, ...] = image_array.shape  # type: ignore[assignment]
+                # Type: ignore for len() on potentially unknown type
+                if len(arr_shape) == 3 and arr_shape[2] == 3:  # type: ignore[arg-type]
+                    # Type annotation to help with numpy array indexing
+                    image_array_rgb: np.ndarray[Any, np.dtype[np.uint8]] = image_array[:, :, ::-1]  # type: ignore[misc]
+                    image_input = Image.fromarray(image_array_rgb)
+                else:
+                    # Type: ignore because numpy arrays are partially typed
+                    image_input = Image.fromarray(image_array)  # type: ignore[arg-type]
             else:
                 image_input = image_array
         else:

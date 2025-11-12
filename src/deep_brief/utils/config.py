@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -160,12 +160,12 @@ class VisualAnalysisConfig(BaseModel):
 
     @field_validator("blur_weight", "contrast_weight", "brightness_weight")
     @classmethod
-    def validate_weights_sum(cls, v: float, info) -> float:
+    def validate_weights_sum(cls, v: float, info: ValidationInfo) -> float:
         """Ensure quality weights are reasonable."""
         if "blur_weight" in info.data and "contrast_weight" in info.data:
             total = (
-                info.data.get("blur_weight", 0)
-                + info.data.get("contrast_weight", 0)
+                info.data.get("blur_weight", 0.0)
+                + info.data.get("contrast_weight", 0.0)
                 + v
             )
             if abs(total - 1.0) > 0.01:  # Allow small floating point errors
@@ -241,7 +241,7 @@ class VisualAnalysisConfig(BaseModel):
             "chi_sim",
             "chi_tra",
         }
-        validated = []
+        validated: list[str] = []
         for lang in v:
             if lang.lower() in common_languages:
                 validated.append(lang.lower())

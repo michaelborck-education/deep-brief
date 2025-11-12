@@ -175,7 +175,7 @@ class ReportGenerator:
 
         # Extract scenes
         scenes = analysis_data.get("scenes", [])
-        scene_reports = []
+        scene_reports: list[SceneReport] = []
         for scene in scenes:
             scene_reports.append(
                 SceneReport(
@@ -189,7 +189,7 @@ class ReportGenerator:
 
         # Extract frame analyses
         frame_analyses = analysis_data.get("frame_analyses", [])
-        frame_reports = []
+        frame_reports: list[FrameReport] = []
         has_captions = False
         has_ocr = False
         has_object_detection = False
@@ -247,6 +247,7 @@ class ReportGenerator:
             frame_reports.append(frame_report)
 
             # Update scene frame count
+            scene_report: SceneReport
             for scene_report in scene_reports:
                 if scene_report.scene_number == frame.scene_number:
                     scene_report.num_frames += 1
@@ -254,7 +255,7 @@ class ReportGenerator:
 
         # Extract transcription
         transcription = analysis_data.get("transcription")
-        transcription_segments = []
+        transcription_segments: list[TranscriptionSegment] = []
         full_text = ""
         language = None
 
@@ -288,13 +289,14 @@ class ReportGenerator:
             )
 
         # Calculate API cost summary
-        api_cost_summary = None
-        total_tokens = 0
-        total_cost = 0.0
+        api_cost_summary: APICostSummary | None = None
+        total_tokens: int = 0
+        total_cost: float = 0.0
         frames_with_cost = 0
-        provider = None
-        model = None
+        provider: str | None = None
+        model: str | None = None
 
+        frame_report: FrameReport
         for frame_report in frame_reports:
             if frame_report.caption_cost is not None and frame_report.caption_cost > 0:
                 total_cost += frame_report.caption_cost

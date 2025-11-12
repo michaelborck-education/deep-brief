@@ -80,9 +80,9 @@ class CLIProgressTracker(ProgressTracker):
     def start_operation(
         self,
         operation_id: str,
-        _operation_name: str | None = None,
-        _total_steps: int | None = None,
-        _details: dict | None = None,
+        operation_name: str | None = None,
+        total_steps: int | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Mark an operation as started."""
         if not self.progress:
@@ -100,8 +100,8 @@ class CLIProgressTracker(ProgressTracker):
         operation_id: str,
         progress: float,
         current_step: str | None = None,
-        _current_step_number: int | None = None,
-        _details: dict[str, Any] | None = None,
+        current_step_number: int | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """
         Update current operation progress.
@@ -121,42 +121,47 @@ class CLIProgressTracker(ProgressTracker):
             return
 
         if op_id in self.cli_operations:
-            if progress is not None:
-                self.cli_operations[op_id].update(progress)
+            self.cli_operations[op_id].update(progress)
             task_id = self.tasks.get(op_id)
             if task_id is not None:
                 percentage = int((progress or 0) * 100)
                 desc = self.cli_operations[op_id].name
                 if current_step:
                     desc = f"{desc} • {current_step}"
-                self.progress.update(task_id, completed=percentage, description=desc)
+                from rich.progress import TaskID
+
+                self.progress.update(TaskID(task_id), completed=percentage, description=desc)
 
     def complete_operation(
-        self, operation_id: str, _details: dict[str, Any] | None = None
+        self, operation_id: str, details: dict[str, Any] | None = None
     ) -> None:
         """Mark an operation as complete."""
         if not self.progress:
             return
 
         if operation_id in self.tasks:
+            from rich.progress import TaskID
+
             task_id = self.tasks[operation_id]
-            self.progress.update(task_id, completed=100)
+            self.progress.update(TaskID(task_id), completed=100)
 
     def fail_operation(
-        self, operation_id: str, _error: str, _details: dict[str, Any] | None = None
+        self, operation_id: str, error: str, details: dict[str, Any] | None = None
     ) -> None:
         """Mark an operation as failed."""
         if not self.progress:
             return
 
         if operation_id in self.tasks:
+            from rich.progress import TaskID
+
             task_id = self.tasks[operation_id]
             op_name = self.cli_operations.get(operation_id)
             desc = f"❌ {op_name.name if op_name else 'Operation'} failed"
-            self.progress.update(task_id, description=desc)
+            self.progress.update(TaskID(task_id), description=desc)
 
     def create_sub_progress_callback(
-        self, operation_id: str, step_weight: float, step_name: str
+        self, operation_id: str, step_weight: float = 1.0, step_name: str | None = None
     ) -> Callable[[float], None]:
         """
         Create a sub-progress callback for a weighted operation step.
@@ -194,19 +199,20 @@ class CLIProgressTracker(ProgressTracker):
 
 
 def create_progress_callback(
-    tracker: CLIProgressTracker,
+    tracker: CLIProgressTracker, operation_id: str
 ) -> Callable[[float], None]:
     """
     Create a progress callback function for the PipelineCoordinator.
 
     Args:
         tracker: CLIProgressTracker instance
+        operation_id: ID of the operation to update progress for
 
     Returns:
         Callback function accepting progress (0.0-1.0)
     """
 
     def callback(progress: float) -> None:
-        tracker.update_progress(progress)
+        tracker.update_progress(operation_id=operation_id, progress=progress)
 
     return callback

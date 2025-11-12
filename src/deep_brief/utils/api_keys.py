@@ -127,7 +127,7 @@ def validate_api_key(provider: APIProvider, api_key: str) -> bool:
     Returns:
         True if key format is valid, False otherwise
     """
-    if not api_key or not isinstance(api_key, str):
+    if not api_key:
         return False
 
     # Basic format validation

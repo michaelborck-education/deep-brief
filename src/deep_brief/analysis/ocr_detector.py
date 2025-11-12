@@ -7,7 +7,7 @@ from presentation slides and other visual content in video frames.
 import logging
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import cv2
 import numpy as np
@@ -339,28 +339,35 @@ class OCRDetector:
 
     def _detect_text_tesseract(self, image: Image.Image) -> list[TextRegion]:
         """Detect text using Tesseract OCR."""
-        text_regions = []
+        text_regions: list[TextRegion] = []
 
         try:
             # Get detailed OCR data with bounding boxes
+            # pytesseract returns a dict with keys: level, page_num, block_num, par_num,
+            # line_num, word_num, left, top, width, height, conf, text
             data = pytesseract.image_to_data(  # type: ignore
                 image, config=self.tesseract_config, output_type=pytesseract.Output.DICT  # type: ignore
             )
 
-            n_boxes = len(data["level"])
+            # Cast to dict to help type checker understand structure
+            data_dict = cast(dict[str, list[Any]], data)
+
+            n_boxes = len(data_dict["level"])
             for i in range(n_boxes):
                 # Skip if confidence is too low or text is empty
-                confidence = float(data["conf"][i])
-                text = data["text"][i].strip()
+                conf_value = data_dict["conf"][i]
+                confidence = float(conf_value) if conf_value not in (None, "", -1) else -1.0
+                text_value = data_dict["text"][i]
+                text = str(text_value).strip() if text_value is not None else ""
 
                 if confidence < 0 or not text:
                     continue
 
                 # Extract bounding box
-                x = int(data["left"][i])
-                y = int(data["top"][i])
-                w = int(data["width"][i])
-                h = int(data["height"][i])
+                x = int(data_dict["left"][i])
+                y = int(data_dict["top"][i])
+                w = int(data_dict["width"][i])
+                h = int(data_dict["height"][i])
 
                 text_region = TextRegion(
                     text=text,
@@ -378,16 +385,19 @@ class OCRDetector:
 
     def _detect_text_easyocr(self, image: Image.Image) -> list[TextRegion]:
         """Detect text using EasyOCR."""
-        text_regions = []
+        text_regions: list[TextRegion] = []
 
         try:
             # Convert PIL to numpy array for EasyOCR
             image_array = np.array(image)
 
             # Perform OCR
+            # EasyOCR returns list of tuples: (bbox_points, text, confidence)
+            # where bbox_points is a list of 4 [x, y] coordinates
             results = self.easyocr_reader.readtext(image_array)  # type: ignore
+            results_list = cast(list[tuple[list[list[float]], str, float]], results)
 
-            for result in results:
+            for result in results_list:
                 bbox_points, text, confidence = result
 
                 # Convert confidence to percentage
@@ -417,7 +427,7 @@ class OCRDetector:
 
     def _filter_text_regions(self, text_regions: list[TextRegion]) -> list[TextRegion]:
         """Filter text regions by confidence and length."""
-        filtered = []
+        filtered: list[TextRegion] = []
 
         for region in text_regions:
             # Filter by confidence threshold
@@ -471,7 +481,7 @@ class OCRDetector:
         return text_regions
 
     def detect_text_batch(
-        self, images: list[Path | Image.Image], preprocess: bool = True, **kwargs
+        self, images: list[Path | Image.Image], preprocess: bool = True, **kwargs: Any
     ) -> list[OCRResult]:
         """
         Detect text in a batch of images.
@@ -484,7 +494,7 @@ class OCRDetector:
         Returns:
             List of OCRResult objects
         """
-        results = []
+        results: list[OCRResult] = []
 
         for image in images:
             try:
@@ -493,6 +503,7 @@ class OCRDetector:
                         image_path=image, preprocess=preprocess, **kwargs
                     )
                 else:
+                    # image must be PIL.Image.Image (type narrowing)
                     result = self.detect_text(
                         pil_image=image, preprocess=preprocess, **kwargs
                     )
@@ -521,7 +532,8 @@ class OCRDetector:
             try:
                 # Get available languages from Tesseract
                 langs = pytesseract.get_languages(config="")  # type: ignore
-                return langs
+                # pytesseract.get_languages returns a list of strings
+                return cast(list[str], langs)
             except Exception:
                 # Return common language codes if detection fails
                 return ["eng", "spa", "fra", "deu", "ita", "por", "rus", "jpn", "kor"]

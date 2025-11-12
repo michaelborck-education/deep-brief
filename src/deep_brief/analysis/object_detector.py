@@ -251,7 +251,7 @@ class ObjectDetector:
             detected_objects = self._detect_with_heuristics(image_array)
 
             # Calculate statistics
-            element_counts = {}
+            element_counts: dict[str, int] = {}
             high_confidence_count = 0
             total_confidence = 0.0
 
@@ -276,9 +276,11 @@ class ObjectDetector:
             )
 
             # Find dominant element
-            dominant_element = None
+            dominant_element: str | None = None
             if element_counts:
-                dominant_element = max(element_counts.items(), key=lambda x: x[1])[0]
+                dominant_element = max(
+                    element_counts.items(), key=lambda x: tuple[str, int](x)[1]
+                )[0]
 
             processing_time = time.time() - start_time
 
@@ -322,7 +324,7 @@ class ObjectDetector:
         This is a placeholder implementation that uses traditional CV techniques.
         In production, this would be replaced with a proper ML model.
         """
-        detected_objects = []
+        detected_objects: list[DetectedObject] = []
         height, width = image.shape[:2]
 
         # Convert to grayscale for analysis
@@ -425,7 +427,7 @@ class ObjectDetector:
             dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
 
-        text_blocks = []
+        text_blocks: list[tuple[int, int, int, int]] = []
         height, width = gray.shape
         min_area = width * height * 0.01  # Minimum 1% of frame area
 
@@ -453,12 +455,14 @@ class ObjectDetector:
             edges, 1, np.pi / 180, threshold=50, minLineLength=30, maxLineGap=10
         )
 
-        if lines is None:
-            return []
+        charts: list[tuple[int, int, int, int]] = []
+
+        # Check if we have valid line detection results
+        if lines is None or len(lines) == 0:  # type: ignore[reportUnnecessaryComparison]
+            return charts
 
         # Group lines into potential chart regions
         # This is a simplified approach - in practice, would use more sophisticated methods
-        charts = []
         height, width = gray.shape
 
         # Look for rectangular regions with many lines
@@ -491,7 +495,7 @@ class ObjectDetector:
             dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
 
-        code_blocks = []
+        code_blocks: list[tuple[int, int, int, int]] = []
         height, width = gray.shape
         min_area = width * height * 0.05  # Minimum 5% of frame area
 
@@ -531,7 +535,7 @@ class ObjectDetector:
             abs(aspect_ratio - 16 / 9) < 0.2 or abs(aspect_ratio - 4 / 3) < 0.2
         )
 
-        return std_dev < 60 and edge_density < 0.1 and is_standard_aspect
+        return bool(std_dev < 60 and edge_density < 0.1 and is_standard_aspect)
 
     def _analyze_layout(
         self, objects: list[DetectedObject], _width: int, _height: int

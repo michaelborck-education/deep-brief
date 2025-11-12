@@ -405,7 +405,7 @@ class CompositeProgressTracker:
         if not self.workflow_id or self.current_operation_index >= len(self.operations):
             return None
 
-        op_id, op_name, weight = self.operations[self.current_operation_index]
+        _op_id, op_name, weight = self.operations[self.current_operation_index]
 
         # Update workflow progress to show we're starting this operation
         self.tracker.update_progress(

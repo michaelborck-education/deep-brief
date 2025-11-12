@@ -148,7 +148,7 @@ class FFmpegError(VideoProcessingError):
             file_path: File being processed when error occurred
             cause: Original exception
         """
-        details = {}
+        details: dict[str, str | int] = {}
         if command:
             details["command"] = command
         if stdout:
@@ -277,7 +277,7 @@ class ProcessingTimeoutError(VideoProcessingError):
         file_path: Path | str | None = None,
         cause: Exception | None = None,
     ):
-        details = {"timeout_seconds": timeout_seconds}
+        details: dict[str, float | str] = {"timeout_seconds": timeout_seconds}
         if operation:
             details["operation"] = operation
 

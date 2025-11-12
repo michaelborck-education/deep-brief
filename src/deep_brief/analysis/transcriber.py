@@ -7,8 +7,9 @@ for video analysis applications.
 import logging
 import warnings
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
+import numpy as np
 import torch
 import whisper
 from pydantic import BaseModel
@@ -93,7 +94,7 @@ class TranscriptionResult(BaseModel):
         self, timestamp: float, tolerance: float = 0.5
     ) -> list[WordTimestamp]:
         """Get words spoken around a specific timestamp."""
-        words = []
+        words: list[WordTimestamp] = []
         for segment in self.segments:
             for word in segment.words:
                 # Check if timestamp is within or near the word's time range
@@ -114,18 +115,18 @@ class TranscriptionResult(BaseModel):
 
     def get_text_between_times(self, start_time: float, end_time: float) -> str:
         """Get transcribed text between two timestamps."""
-        text_parts = []
+        text_parts: list[str] = []
         for segment in self.segments:
             # Check if segment overlaps with time range
             if segment.end >= start_time and segment.start <= end_time:
                 if segment.words:
                     # Use word-level timing for precise extraction
-                    segment_words = []
+                    segment_words: list[str] = []
                     for word in segment.words:
                         if word.end >= start_time and word.start <= end_time:
                             segment_words.append(word.word)
                     if segment_words:
-                        text_parts.append(" ".join(segment_words))  # type: ignore
+                        text_parts.append(" ".join(segment_words))
                 else:
                     # Fallback to segment-level text
                     text_parts.append(segment.text.strip())
@@ -369,23 +370,23 @@ class WhisperTranscriber:
             )
 
             # Process result
-            segments = []
+            segments: list[Segment] = []
             for i, segment_data in enumerate(result.get("segments", [])):
                 # Process word-level timestamps if available
                 words: list[WordTimestamp] = []
                 if word_timestamps and "words" in segment_data:
-                    word_list: list[WhisperWord] = segment_data.get("words", [])  # type: ignore
-                    for word_data in word_list:  # type: ignore
-                                words.append(
-                                    WordTimestamp(
-                                        word=str(word_data.get("word", "")).strip(),
-                                        start=float(word_data.get("start", 0.0)),
-                                        end=float(word_data.get("end", 0.0)),
-                                        confidence=float(
-                                            word_data.get("confidence", 1.0)
-                                        ),
-                                    )
-                                )
+                    word_list = segment_data.get("words", [])
+                    for word_data in word_list:
+                        words.append(
+                            WordTimestamp(
+                                word=str(word_data.get("word", "")).strip(),
+                                start=float(word_data.get("start", 0.0)),
+                                end=float(word_data.get("end", 0.0)),
+                                confidence=float(
+                                    word_data.get("confidence", 1.0)
+                                ),
+                            )
+                        )
 
                 segment = Segment(
                     id=i,
@@ -482,7 +483,7 @@ class WhisperTranscriber:
             ) from e
 
     def transcribe_from_path(
-        self, audio_path: Path | str, language: str | None = None, **kwargs
+        self, audio_path: Path | str, language: str | None = None, **kwargs: Any
     ) -> TranscriptionResult:
         """
         Convenience method to transcribe audio from a file path.
@@ -537,7 +538,7 @@ class WhisperTranscriber:
             ) from e
 
     def transcribe_audio_segment(
-        self, audio_info: AudioInfo, start_time: float, end_time: float, **kwargs
+        self, audio_info: AudioInfo, start_time: float, end_time: float, **kwargs: Any
     ) -> TranscriptionResult:
         """
         Transcribe a specific segment of audio.
@@ -558,7 +559,7 @@ class WhisperTranscriber:
         full_result = self.transcribe_audio(audio_info, **kwargs)
 
         # Filter segments to the requested time range
-        filtered_segments = []
+        filtered_segments: list[Segment] = []
         segment_id = 0
 
         for segment in full_result.segments:
@@ -596,7 +597,7 @@ class WhisperTranscriber:
                 segment_id += 1
 
         # Create filtered result
-        filtered_text = " ".join(segment.text for segment in filtered_segments)
+        filtered_text = " ".join(str(segment.text) for segment in filtered_segments)
         word_count = sum(len(segment.words) for segment in filtered_segments)
 
         return TranscriptionResult(
@@ -641,28 +642,39 @@ class WhisperTranscriber:
             model = self._load_model()
 
             # Load audio and prepare for detection
-            audio = whisper.load_audio(str(audio_info.file_path))
+            # Whisper's load_audio returns a numpy array
+            audio_np: np.ndarray[Any, np.dtype[np.float32]] = cast(
+                "np.ndarray[Any, np.dtype[np.float32]]",
+                whisper.load_audio(str(audio_info.file_path))  # type: ignore[attr-defined]
+            )
 
             # Limit to sample_duration for faster detection
             sample_duration = min(sample_duration, 30.0)  # Whisper limit
-            if len(audio) > sample_duration * 16000:  # 16kHz sample rate
-                audio = audio[: int(sample_duration * 16000)]
+            if len(audio_np) > sample_duration * 16000:  # 16kHz sample rate
+                audio_np = audio_np[: int(sample_duration * 16000)]
 
             # Pad or trim to 30 seconds (Whisper's expected input length)
-            audio = whisper.pad_or_trim(audio)
+            audio_padded = cast(
+                torch.Tensor,
+                whisper.pad_or_trim(audio_np)  # type: ignore[attr-defined]
+            )
 
             # Create log-Mel spectrogram
-            mel = whisper.log_mel_spectrogram(audio).to(model.device)
+            mel = cast(
+                torch.Tensor,
+                whisper.log_mel_spectrogram(audio_padded)  # type: ignore[attr-defined]
+            ).to(model.device)  # type: ignore[attr-defined]
 
             # Detect language
-            _, probs = model.detect_language(mel)  # type: ignore
+            _, probs_dict = model.detect_language(mel)  # type: ignore[attr-defined]
+            probs: dict[str, float] = cast("dict[str, float]", probs_dict)
 
             # Get the most probable language
-            detected_language = max(probs, key=probs.get)  # type: ignore
-            confidence = probs[detected_language]  # type: ignore
+            detected_language: str = max(probs, key=lambda k: probs[k])
+            confidence: float = probs[detected_language]
 
             # Sort all probabilities for reference
-            sorted_probs = dict(sorted(probs.items(), key=lambda x: x[1], reverse=True))  # type: ignore
+            sorted_probs: dict[str, float] = dict(sorted(probs.items(), key=lambda x: x[1], reverse=True))
 
             logger.info(
                 f"Language detection complete: {detected_language} "
@@ -670,13 +682,13 @@ class WhisperTranscriber:
             )
 
             # Log top 3 candidates for debugging
-            top_3 = list(sorted_probs.items())[:3]
+            top_3: list[tuple[str, float]] = list(sorted_probs.items())[:3]
             logger.debug(f"Top 3 language candidates: {top_3}")
 
             return LanguageDetectionResult(
-                detected_language=str(detected_language),  # type: ignore
-                confidence=confidence,  # type: ignore
-                all_probabilities=sorted_probs,  # type: ignore
+                detected_language=detected_language,
+                confidence=confidence,
+                all_probabilities=sorted_probs,
                 detection_method="whisper",
             )
 

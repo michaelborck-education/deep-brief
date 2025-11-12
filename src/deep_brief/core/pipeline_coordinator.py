@@ -2,10 +2,14 @@
 
 import logging
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from deep_brief.analysis.frame_analyzer import FrameAnalysisPipeline
+from deep_brief.analysis.frame_analyzer import (
+    ExtractedFrame,
+    FrameAnalysisPipeline,
+)
 from deep_brief.analysis.speech_analyzer import SpeechAnalyzer
 from deep_brief.analysis.transcriber import WhisperTranscriber
 from deep_brief.core.audio_extractor import AudioExtractor, AudioInfo
@@ -19,7 +23,7 @@ from deep_brief.core.progress_tracker import (
     CompositeProgressTracker,
     ProgressTracker,
 )
-from deep_brief.core.scene_detector import SceneDetectionResult, SceneDetector
+from deep_brief.core.scene_detector import Scene, SceneDetectionResult, SceneDetector
 from deep_brief.core.video_processor import FrameInfo, VideoInfo, VideoProcessor
 from deep_brief.reports.html_renderer import HTMLRenderer
 from deep_brief.reports.report_generator import ReportGenerator
@@ -350,15 +354,12 @@ class PipelineCoordinator:
                 )
 
             # Mark workflow as complete
-            if composite_tracker:
+            if composite_tracker and self.progress_tracker:
                 # Final progress update
-                composite_tracker.update_progress(
+                self.progress_tracker.update_progress(
                     operation_id=workflow_id,
                     progress=1.0,
                     current_step="Analysis complete",
-                )
-                composite_tracker.complete_operation(
-                    operation_id=workflow_id,
                 )
                 self.progress_tracker.complete_operation(
                     operation_id=workflow_id,
@@ -383,6 +384,19 @@ class PipelineCoordinator:
             if composite_tracker:
                 composite_tracker.fail_workflow(error_msg)
 
+            # If video_info is None, create minimal video info from path
+            if video_info is None:
+                video_info = VideoInfo(
+                    file_path=video_path,
+                    duration=0.0,
+                    width=0,
+                    height=0,
+                    fps=0.0,
+                    format="unknown",
+                    size_mb=0.0,
+                    codec="unknown",
+                )
+
             result = VideoAnalysisResult(
                 video_info=video_info,
                 success=False,
@@ -403,6 +417,19 @@ class PipelineCoordinator:
             generic_error = VideoProcessingError(
                 message=str(e), file_path=video_path, cause=e
             )
+
+            # If video_info is None, create minimal video info from path
+            if video_info is None:
+                video_info = VideoInfo(
+                    file_path=video_path,
+                    duration=0.0,
+                    width=0,
+                    height=0,
+                    fps=0.0,
+                    format="unknown",
+                    size_mb=0.0,
+                    codec="unknown",
+                )
 
             result = VideoAnalysisResult(
                 video_info=video_info,
@@ -434,7 +461,7 @@ class PipelineCoordinator:
             List of VideoAnalysisResult objects
         """
         batch_id = f"batch_analysis_{uuid.uuid4().hex[:8]}"
-        results = []
+        results: list[VideoAnalysisResult] = []
 
         # Set up batch progress tracking
         if self.progress_tracker:
@@ -479,7 +506,9 @@ class PipelineCoordinator:
 
             # Complete batch processing
             if self.progress_tracker:
-                successful_results = [r for r in results if r.success]
+                successful_results: list[VideoAnalysisResult] = [
+                    r for r in results if r.success
+                ]
                 self.progress_tracker.complete_operation(
                     operation_id=batch_id,
                     details={
@@ -505,7 +534,7 @@ class PipelineCoordinator:
         self,
         audio_path: Path,
         scene_result: SceneDetectionResult | None = None,
-        _progress_callback: Any = None,
+        _progress_callback: Callable[[float], None] | None = None,
     ) -> dict[str, Any]:
         """
         Perform speech analysis on extracted audio.
@@ -555,8 +584,8 @@ class PipelineCoordinator:
     def analyze_frames(
         self,
         frame_paths: list[Path],
-        _scenes: list | None = None,
-        _progress_callback: Any = None,
+        _scenes: list[Scene] | None = None,
+        _progress_callback: Callable[[float], None] | None = None,
     ) -> dict[str, Any]:
         """
         Perform visual analysis on extracted frames.
@@ -576,7 +605,7 @@ class PipelineCoordinator:
             frame_analyzer = FrameAnalysisPipeline(config=self.config)
 
             # Analyze all frames
-            frame_results = []
+            frame_results: list[ExtractedFrame] = []
             for i, frame_path in enumerate(frame_paths):
                 logger.debug(
                     f"Analyzing frame {i + 1}/{len(frame_paths)}: {frame_path}"
@@ -652,7 +681,7 @@ class PipelineCoordinator:
             logger.info(f"JSON report saved: {json_path}")
 
             # Generate and save HTML report
-            html_renderer = HTMLRenderer(config=self.config)
+            html_renderer = HTMLRenderer()
             html_content = html_renderer.render_report(report)
             html_path = output_dir / "analysis.html"
             html_renderer.save_html(html_content, html_path)

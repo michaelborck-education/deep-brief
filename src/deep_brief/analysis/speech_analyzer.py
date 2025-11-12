@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from deep_brief.analysis.transcriber import TranscriptionResult
+from deep_brief.analysis.transcriber import Segment, TranscriptionResult
 from deep_brief.core.scene_detector import SceneDetectionResult
 from deep_brief.utils.config import get_config
 
@@ -246,13 +246,13 @@ class SpeechAnalysisResult(BaseModel):
 
     def get_all_silence_segments(self) -> list[dict[str, Any]]:
         """Get all silence segments across all scenes with scene information."""
-        all_silences = []
+        all_silences: list[dict[str, Any]] = []
         for scene in self.scene_metrics:
             for silence in scene.silence_segments:
                 silence_with_scene = silence.copy()
                 silence_with_scene["scene_number"] = scene.scene_number
                 all_silences.append(silence_with_scene)
-        return sorted(all_silences, key=lambda x: x["start"])
+        return sorted(all_silences, key=lambda x: float(x["start"]))
 
     def get_longest_silences(self, count: int = 5) -> list[dict[str, Any]]:
         """Get the longest silence periods across all scenes."""
@@ -351,7 +351,7 @@ class SpeechAnalysisResult(BaseModel):
 
     def get_problematic_segments_summary(self) -> dict[str, Any]:
         """Get summary of all problematic segments across scenes."""
-        all_problematic = []
+        all_problematic: list[dict[str, Any]] = []
         issue_counts: dict[str, int] = {}
 
         for scene in self.scene_metrics:
@@ -367,7 +367,7 @@ class SpeechAnalysisResult(BaseModel):
             "total_problematic_segments": len(all_problematic),
             "issue_type_distribution": issue_counts,
             "segments": sorted(
-                all_problematic, key=lambda x: x.get("severity", 0), reverse=True
+                all_problematic, key=lambda x: int(x.get("severity", 0)), reverse=True
             ),
         }
 
@@ -454,14 +454,18 @@ class SpeechAnalyzer:
 
         start_time = time.time()
 
-        if confidence_threshold is None:
-            confidence_threshold = self.config.analysis.confidence_threshold
+        # Ensure confidence_threshold is not None
+        threshold: float = (
+            confidence_threshold
+            if confidence_threshold is not None
+            else self.config.analysis.confidence_threshold
+        )
 
         logger.info(f"Analyzing speech across {scene_result.total_scenes} scenes")
-        logger.info(f"Using confidence threshold: {confidence_threshold}")
+        logger.info(f"Using confidence threshold: {threshold}")
 
         # Calculate metrics for each scene
-        scene_metrics = []
+        scene_metrics: list[SceneSpeechMetrics] = []
         for i, scene in enumerate(scene_result.scenes):
             scene_metrics.append(
                 self._analyze_scene_speech(
@@ -469,7 +473,7 @@ class SpeechAnalyzer:
                     start_time=scene.start_time,
                     end_time=scene.end_time,
                     transcription_result=transcription_result,
-                    confidence_threshold=confidence_threshold,
+                    confidence_threshold=threshold,
                 )
             )
 
@@ -486,7 +490,7 @@ class SpeechAnalyzer:
             processing_time=processing_time,
             language=transcription_result.language,
             model_used=transcription_result.model_used,
-            confidence_threshold=confidence_threshold,
+            confidence_threshold=threshold,
             target_wpm_range=self.config.analysis.target_wpm_range,
         )
 
@@ -616,7 +620,7 @@ class SpeechAnalyzer:
         confidence_threshold: float,
     ) -> list[dict[str, Any]]:
         """Extract words within scene timeframe with confidence filtering."""
-        scene_words = []
+        scene_words: list[dict[str, Any]] = []
 
         for segment in transcription_result.segments:
             # Check if segment overlaps with scene
@@ -716,11 +720,11 @@ class SpeechAnalyzer:
         # Normalize filler words for case-insensitive matching
         normalized_fillers = [word.lower().strip() for word in filler_words_config]
 
-        detected_fillers = []
+        detected_fillers: list[dict[str, Any]] = []
         filler_count = 0
 
         for word_info in scene_words:
-            word_text = word_info["word"].lower().strip()
+            word_text = str(word_info["word"]).lower().strip()
 
             # Remove punctuation for better matching
             clean_word = word_text.strip(".,!?;:")
@@ -783,8 +787,8 @@ class SpeechAnalyzer:
             )
 
         # Sort words by start time
-        sorted_words = sorted(scene_words, key=lambda x: x["start"])
-        silence_segments = []
+        sorted_words = sorted(scene_words, key=lambda x: float(x["start"]))
+        silence_segments: list[dict[str, Any]] = []
         total_silence_time = 0.0
 
         # Check for silence at the beginning of scene
@@ -839,7 +843,7 @@ class SpeechAnalyzer:
 
         if silence_segments:
             average_silence_duration = total_silence_time / silence_count
-            longest_silence_duration = max(seg["duration"] for seg in silence_segments)
+            longest_silence_duration = max(float(seg["duration"]) for seg in silence_segments)
         else:
             average_silence_duration = 0.0
             longest_silence_duration = 0.0
@@ -945,7 +949,7 @@ class SpeechAnalyzer:
 
         # Normalize text for analysis
         words = text.lower().split()
-        emotional_keywords = []
+        emotional_keywords: list[dict[str, Any]] = []
         positive_score = 0
         negative_score = 0
 
@@ -1028,7 +1032,7 @@ class SpeechAnalyzer:
             )
 
         # Get segments overlapping with this scene
-        scene_segments = []
+        scene_segments: list[Segment] = []
         for segment in transcription_result.segments:
             if segment.end >= start_time and segment.start <= end_time:
                 scene_segments.append(segment)
@@ -1051,13 +1055,13 @@ class SpeechAnalyzer:
         low_confidence_ratio = low_confidence_count / len(scene_words)
 
         # Calculate segment-level metrics
-        segment_scores = []
-        logprobs = []
-        no_speech_probs = []
-        problematic_segments = []
+        segment_scores: list[dict[str, Any]] = []
+        logprobs: list[float] = []
+        no_speech_probs: list[float] = []
+        problematic_segments: list[dict[str, Any]] = []
 
         for segment in scene_segments:
-            segment_score = {
+            segment_score: dict[str, Any] = {
                 "segment_id": segment.id,
                 "start": segment.start,
                 "end": segment.end,
@@ -1103,7 +1107,7 @@ class SpeechAnalyzer:
         )
 
         # Identify confidence issues
-        confidence_issues = []
+        confidence_issues: list[dict[str, Any]] = []
         if low_confidence_ratio > 0.3:
             confidence_issues.append(
                 {
@@ -1375,7 +1379,7 @@ class SpeechAnalyzer:
         ]
 
         # Collect critical issues from all scenes
-        critical_issues = []
+        critical_issues: list[dict[str, Any]] = []
         for scene in scene_metrics:
             for issue in scene.confidence_issues:
                 if issue.get("severity") == "high":
@@ -1399,7 +1403,7 @@ class SpeechAnalyzer:
             transcription_reliability = 0.0
 
         # Generate recommended actions based on quality issues
-        recommended_actions = []
+        recommended_actions: list[str] = []
         if overall_quality_score < 0.7:
             recommended_actions.append(
                 "Consider re-recording audio with better microphone quality"

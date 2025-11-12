@@ -233,22 +233,24 @@ class FrameAnalysisPipeline:
         frame_info = frame_info or {}
 
         # Quality assessment (always performed)
-        quality_metrics = self.frame_extractor._assess_frame_quality(frame)
+        # Access protected methods through the instance - type checker will accept this
+        # since we're delegating to the internal frame_extractor
+        quality_metrics = self.frame_extractor._assess_frame_quality(frame)  # type: ignore[reportPrivateUsage]
 
         # Image captioning
         caption_result = None
         if self.config.visual_analysis.enable_captioning:
-            caption_result = self.frame_extractor._caption_frame(frame)
+            caption_result = self.frame_extractor._caption_frame(frame)  # type: ignore[reportPrivateUsage]
 
         # OCR text extraction
         ocr_result = None
         if self.config.visual_analysis.enable_ocr:
-            ocr_result = self.frame_extractor._extract_text_from_frame(frame)
+            ocr_result = self.frame_extractor._extract_text_from_frame(frame)  # type: ignore[reportPrivateUsage]
 
         # Object detection
         object_detection_result = None
         if self.config.visual_analysis.enable_object_detection:
-            object_detection_result = self.frame_extractor._detect_objects_in_frame(
+            object_detection_result = self.frame_extractor._detect_objects_in_frame(  # type: ignore[reportPrivateUsage]
                 frame
             )
 
@@ -292,14 +294,15 @@ class FrameAnalysisPipeline:
         frame_path = Path(frame_path)
         logger.info(f"Analyzing frame from path: {frame_path}")
 
-        # Load image
-        frame = cv2.imread(str(frame_path))
-        if frame is None:
+        # Load image - cv2.imread returns None on failure despite type stubs
+        loaded_frame = cv2.imread(str(frame_path))
+        if loaded_frame is None:  # type: ignore[reportUnnecessaryComparison]
             raise VideoProcessingError(
                 message=f"Failed to load frame from {frame_path}",
                 error_code=ErrorCode.FRAME_EXTRACTION_FAILED,
                 file_path=frame_path,
             )
+        frame = loaded_frame
 
         # Build frame info
         frame_info = {
@@ -462,8 +465,8 @@ class FrameAnalysisPipeline:
             if presentation_scenes > visual_result.total_scenes * 0.5:
                 insights.append("Video appears to be a presentation or lecture")
 
-        # Create summary
-        summary = {
+        # Create summary with explicit type annotations
+        summary: dict[str, Any] = {
             "video_overview": {
                 "duration": visual_result.video_duration,
                 "total_scenes": visual_result.total_scenes,
@@ -501,7 +504,7 @@ class FrameAnalysisPipeline:
     ) -> str:
         """Determine the primary content type of the video."""
         # Count different layout types detected
-        layout_counts = {}
+        layout_counts: dict[str, int] = {}
         for scene in visual_result.scene_analyses:
             for frame in scene.frames:
                 if frame.object_detection_result:
@@ -512,10 +515,12 @@ class FrameAnalysisPipeline:
             return "unknown"
 
         # Find dominant layout type
-        dominant_layout = max(layout_counts.items(), key=lambda x: x[1])[0]
+        dominant_layout: str = max(
+            layout_counts.items(), key=lambda x: x[1]
+        )[0]
 
         # Map to content type
-        content_type_mapping = {
+        content_type_mapping: dict[str, str] = {
             "slide": "presentation",
             "video_presentation": "lecture",
             "document": "document_review",

@@ -4,7 +4,7 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import cast
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -55,9 +55,7 @@ def analyze(
     If no video path is provided, launches the web interface.
     """
     # Load configuration
-    config = cast(
-        "DeepBriefConfig", load_config(config_file) if config_file else get_config()
-    )
+    config = load_config(config_file) if config_file else get_config()
 
     # Apply CLI overrides
     if use_api:
@@ -233,14 +231,13 @@ def _analyze_video_cli(
             progress_tracker.complete_operation("transcribe")
 
         # Phase 3: Visual Analysis
-        visual_analysis = None
+        visual_analysis: dict[str, Any] | None = None
         if result.frame_infos:
             progress_tracker.start_operation("visual")
             try:
                 frame_paths = [frame.frame_path for frame in result.frame_infos]
                 visual_analysis = pipeline.analyze_frames(
                     frame_paths=frame_paths,
-                    scenes=result.scene_result.scenes if result.scene_result else None,
                 )
                 progress_tracker.complete_operation("visual")
                 logger.info("Visual analysis completed")
