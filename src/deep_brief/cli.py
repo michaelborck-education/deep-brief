@@ -389,8 +389,12 @@ def _analyze_video_cli(
         # Phase 5: Grading (if rubric provided or --grade flag set)
         # Apply defaults if --grade flag is set
         effective_rubric_type = rubric_type or ("general" if grade else None)
-        effective_audience = feedback_audience or ("student" if (grade or rubric_type or rubric_file) else None)
-        effective_detail = feedback_detail or ("summary" if (grade or rubric_type or rubric_file) else None)
+        effective_audience = feedback_audience or (
+            "student" if (grade or rubric_type or rubric_file) else None
+        )
+        effective_detail = feedback_detail or (
+            "summary" if (grade or rubric_type or rubric_file) else None
+        )
 
         if effective_rubric_type or rubric_file:
             console.print("\n[bold cyan]Generating grading feedback...[/bold cyan]")
@@ -426,7 +430,9 @@ def _analyze_video_cli(
                     )
 
                 # Show feedback options
-                console.print(f"[cyan]→[/cyan] Audience: [bold]{effective_audience}[/bold], Detail: [bold]{effective_detail}[/bold]")
+                console.print(
+                    f"[cyan]→[/cyan] Audience: [bold]{effective_audience}[/bold], Detail: [bold]{effective_detail}[/bold]"
+                )
 
                 # Prepare analysis data for grading
                 video_info_dict: dict[str, Any] = {}
@@ -812,33 +818,33 @@ def _generate_grading_feedback(
     provider_lower = provider.lower()
     assert isinstance(provider_lower, str)  # For type checker
     if provider_lower == "anthropic":
-        from anthropic import Anthropic
+        from anthropic import Anthropic  # type: ignore[import-not-found]
 
-        client = Anthropic(api_key=api_key)
-        response = client.messages.create(
+        client = Anthropic(api_key=api_key)  # type: ignore[attr-defined]
+        response = client.messages.create(  # type: ignore[attr-defined]
             model=api_model or "claude-haiku-4-5",
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
-        if response.content:
-            content_block = response.content[0]
-            if hasattr(content_block, "text"):
+        if response.content:  # type: ignore[attr-defined]
+            content_block = response.content[0]  # type: ignore[attr-defined]
+            if hasattr(content_block, "text"):  # type: ignore[arg-type]
                 feedback_text = content_block.text  # type: ignore[attr-defined]
 
     elif provider_lower == "openai":
-        from openai import OpenAI
+        from openai import OpenAI  # type: ignore[import-not-found]
 
-        client = OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
+        client = OpenAI(api_key=api_key)  # type: ignore[attr-defined]
+        response = client.chat.completions.create(  # type: ignore[attr-defined]
             model=api_model or "gpt-4o",
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
-        if response.choices and response.choices[0].message.content:
-            feedback_text = response.choices[0].message.content
+        if response.choices and response.choices[0].message.content:  # type: ignore[attr-defined]
+            feedback_text = response.choices[0].message.content  # type: ignore[attr-defined]
 
     elif provider_lower == "google":
-        import google.generativeai as genai
+        import google.generativeai as genai  # type: ignore[import-not-found]
 
         genai.configure(api_key=api_key)  # type: ignore[attr-defined]
         model = genai.GenerativeModel(api_model or "gemini-2.0-flash")  # type: ignore[attr-defined]
@@ -854,7 +860,10 @@ def _generate_grading_feedback(
 
 
 def _build_grading_prompt(
-    rubric: Any, analysis_data: dict[str, Any], audience: str = "student", detail: str = "summary"
+    rubric: Any,
+    analysis_data: dict[str, Any],
+    audience: str = "student",
+    detail: str = "summary",
 ) -> str:  # type: ignore[return]
     """Build the prompt for LLM grading.
 
@@ -884,7 +893,10 @@ def _build_grading_prompt(
             "Focus on growth, strengths, and specific, actionable areas for improvement."
         )
 
-    prompt: str = system_instruction + "\n\nPlease evaluate the following presentation based on the provided rubric.\n\n"
+    prompt: str = (
+        system_instruction
+        + "\n\nPlease evaluate the following presentation based on the provided rubric.\n\n"
+    )
     prompt += "## Rubric: " + rubric_name + "\n" + rubric_desc + "\n\n"
     prompt += "### Rubric Categories and Criteria:\n"
 
