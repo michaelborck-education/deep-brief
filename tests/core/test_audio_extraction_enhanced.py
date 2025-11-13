@@ -11,19 +11,19 @@ from unittest.mock import MagicMock, patch
 import ffmpeg
 import pytest
 
-from deep_brief.core.audio_extractor import AudioExtractor, AudioInfo
-from deep_brief.core.exceptions import (
+from video_lens.core.audio_extractor import AudioExtractor, AudioInfo
+from video_lens.core.exceptions import (
     AudioProcessingError,
     ErrorCode,
 )
-from deep_brief.core.video_processor import VideoInfo
-from deep_brief.utils.config import AudioConfig, DeepBriefConfig, ProcessingConfig
+from video_lens.core.video_processor import VideoInfo
+from video_lens.utils.config import AudioConfig, VideoLensConfig, ProcessingConfig
 
 
 @pytest.fixture
 def mock_config():
     """Create a mock configuration for testing."""
-    config = DeepBriefConfig(
+    config = VideoLensConfig(
         processing=ProcessingConfig(
             temp_dir=Path(tempfile.mkdtemp()), cleanup_temp_files=True
         ),

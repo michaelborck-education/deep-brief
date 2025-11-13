@@ -6,28 +6,28 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from deep_brief.analysis.frame_analyzer import (
+from video_lens.analysis.frame_analyzer import (
     ExtractedFrame,
     FrameAnalysisPipeline,
 )
-from deep_brief.analysis.speech_analyzer import SpeechAnalyzer
-from deep_brief.analysis.transcriber import WhisperTranscriber
-from deep_brief.core.audio_extractor import AudioExtractor, AudioInfo
-from deep_brief.core.exceptions import (
+from video_lens.analysis.speech_analyzer import SpeechAnalyzer
+from video_lens.analysis.transcriber import WhisperTranscriber
+from video_lens.core.audio_extractor import AudioExtractor, AudioInfo
+from video_lens.core.exceptions import (
     AudioProcessingError,
     ErrorCode,
     VideoProcessingError,
     get_user_friendly_message,
 )
-from deep_brief.core.progress_tracker import (
+from video_lens.core.progress_tracker import (
     CompositeProgressTracker,
     ProgressTracker,
 )
-from deep_brief.core.scene_detector import Scene, SceneDetectionResult, SceneDetector
-from deep_brief.core.video_processor import FrameInfo, VideoInfo, VideoProcessor
-from deep_brief.reports.html_renderer import HTMLRenderer
-from deep_brief.reports.report_generator import ReportGenerator
-from deep_brief.utils.config import get_config
+from video_lens.core.scene_detector import Scene, SceneDetectionResult, SceneDetector
+from video_lens.core.video_processor import FrameInfo, VideoInfo, VideoProcessor
+from video_lens.reports.html_renderer import HTMLRenderer
+from video_lens.reports.report_generator import ReportGenerator
+from video_lens.utils.config import get_config
 
 logger = logging.getLogger(__name__)
 

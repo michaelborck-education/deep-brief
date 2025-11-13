@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from deep_brief.utils.config import (
-    DeepBriefConfig,
+from video_lens.utils.config import (
+    VideoLensConfig,
     create_default_config_file,
     export_config_to_env,
     export_config_to_json,
@@ -23,9 +23,9 @@ from deep_brief.utils.config import (
 
 def test_default_config() -> None:
     """Test that default configuration loads correctly."""
-    config = DeepBriefConfig()
+    config = VideoLensConfig()
 
-    assert config.app_name == "DeepBrief"
+    assert config.app_name == "Video Lens"
     assert config.debug is False
     assert config.processing.max_video_size_mb == 500
     assert config.scene_detection.threshold == 0.4
@@ -37,15 +37,15 @@ def test_config_validation() -> None:
     """Test configuration validation."""
     # Test invalid video format
     with pytest.raises(ValueError, match="Unsupported format"):
-        DeepBriefConfig(processing={"supported_formats": ["invalid"]})
+        VideoLensConfig(processing={"supported_formats": ["invalid"]})
 
     # Test invalid WPM range
     with pytest.raises(ValueError, match="WPM min must be less than max"):
-        DeepBriefConfig(analysis={"target_wpm_range": [160, 140]})
+        VideoLensConfig(analysis={"target_wpm_range": [160, 140]})
 
     # Test invalid log level
     with pytest.raises(ValueError, match="Invalid log level"):
-        DeepBriefConfig(logging={"level": "INVALID"})
+        VideoLensConfig(logging={"level": "INVALID"})
 
 
 def test_load_config_from_file(temp_dir: Path) -> None:
@@ -71,7 +71,7 @@ def test_load_config_from_file(temp_dir: Path) -> None:
 
 def test_save_config(temp_dir: Path) -> None:
     """Test saving configuration to file."""
-    config = DeepBriefConfig(
+    config = VideoLensConfig(
         app_name="Test Save", debug=True, processing={"max_video_size_mb": 250}
     )
 
@@ -89,11 +89,11 @@ def test_save_config(temp_dir: Path) -> None:
 
 def test_environment_override(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test environment variable overrides."""
-    monkeypatch.setenv("DEEP_BRIEF_APP_NAME", "Env Override")
-    monkeypatch.setenv("DEEP_BRIEF_DEBUG", "true")
-    monkeypatch.setenv("DEEP_BRIEF_PROCESSING__MAX_VIDEO_SIZE_MB", "750")
+    monkeypatch.setenv("VIDEO_LENS_APP_NAME", "Env Override")
+    monkeypatch.setenv("VIDEO_LENS_DEBUG", "true")
+    monkeypatch.setenv("VIDEO_LENS_PROCESSING__MAX_VIDEO_SIZE_MB", "750")
 
-    config = DeepBriefConfig()
+    config = VideoLensConfig()
 
     assert config.app_name == "Env Override"
     assert config.debug is True
@@ -102,7 +102,7 @@ def test_environment_override(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_nested_config_validation() -> None:
     """Test validation of nested configuration objects."""
-    config = DeepBriefConfig()
+    config = VideoLensConfig()
 
     # Test scene detection bounds
     assert 0.1 <= config.scene_detection.threshold <= 0.9
@@ -123,7 +123,7 @@ def test_setup_logging(temp_dir: Path) -> None:
 
     log_file = temp_dir / "test.log"
 
-    from deep_brief.utils.config import LoggingConfig
+    from video_lens.utils.config import LoggingConfig
 
     logging_config = LoggingConfig(
         level="DEBUG",
@@ -133,7 +133,7 @@ def test_setup_logging(temp_dir: Path) -> None:
 
     setup_logging(logging_config)
 
-    logger = logging.getLogger("deep_brief")
+    logger = logging.getLogger("video_lens")
     logger.debug("Test debug message")
     logger.info("Test info message")
 
@@ -163,7 +163,7 @@ def test_missing_config_file() -> None:
     config = load_config(nonexistent_file)
 
     # Should still work with defaults
-    assert config.app_name == "DeepBrief"
+    assert config.app_name == "Video Lens"
     assert config.debug is False
 
 
@@ -174,7 +174,7 @@ def test_malformed_config_file(temp_dir: Path) -> None:
 
     # Should not crash, should use defaults
     config = load_config(config_file)
-    assert config.app_name == "DeepBrief"
+    assert config.app_name == "Video Lens"
 
 
 @pytest.mark.parametrize(
@@ -189,14 +189,14 @@ def test_malformed_config_file(temp_dir: Path) -> None:
 )
 def test_valid_whisper_models(model_name: str) -> None:
     """Test that all valid Whisper models are accepted."""
-    config = DeepBriefConfig(transcription={"model": model_name})
+    config = VideoLensConfig(transcription={"model": model_name})
     assert config.transcription.model == model_name
 
 
 def test_invalid_whisper_model() -> None:
     """Test that invalid Whisper models are rejected."""
     with pytest.raises(ValueError, match="Invalid model"):
-        DeepBriefConfig(transcription={"model": "invalid-model"})
+        VideoLensConfig(transcription={"model": "invalid-model"})
 
 
 class TestConfigExport:
@@ -204,7 +204,7 @@ class TestConfigExport:
 
     def test_export_to_json(self, temp_dir: Path) -> None:
         """Test exporting configuration to JSON format."""
-        config = DeepBriefConfig(app_name="Test Export", debug=True)
+        config = VideoLensConfig(app_name="Test Export", debug=True)
         export_path = temp_dir / "config.json"
 
         export_config_to_json(config, export_path)
@@ -218,7 +218,7 @@ class TestConfigExport:
 
     def test_export_to_env(self, temp_dir: Path) -> None:
         """Test exporting configuration to .env format."""
-        config = DeepBriefConfig(app_name="Test Env", debug=True)
+        config = VideoLensConfig(app_name="Test Env", debug=True)
         export_path = temp_dir / ".env"
 
         export_config_to_env(config, export_path)
@@ -233,7 +233,7 @@ class TestConfigExport:
 
     def test_export_env_handles_nested_config(self, temp_dir: Path) -> None:
         """Test that env export properly flattens nested config."""
-        config = DeepBriefConfig(
+        config = VideoLensConfig(
             processing={"max_video_size_mb": 250},
             transcription={"model": "whisper-small"},
         )
@@ -247,7 +247,7 @@ class TestConfigExport:
 
     def test_export_env_handles_lists(self, temp_dir: Path) -> None:
         """Test that env export properly handles list values."""
-        config = DeepBriefConfig(
+        config = VideoLensConfig(
             processing={"supported_formats": ["mp4", "mov", "avi"]}
         )
         export_path = temp_dir / ".env"
@@ -266,7 +266,7 @@ class TestConfigExport:
 
         assert config_path.exists()
         loaded_config = load_config(config_path)
-        assert loaded_config.app_name == "DeepBrief"
+        assert loaded_config.app_name == "Video Lens"
 
 
 class TestConfigValidation:
@@ -274,7 +274,7 @@ class TestConfigValidation:
 
     def test_validate_valid_config(self, temp_dir: Path) -> None:
         """Test that valid config passes validation."""
-        config = DeepBriefConfig(
+        config = VideoLensConfig(
             processing={"temp_dir": temp_dir / "temp"},
             logging={"file_path": temp_dir / "logs" / "test.log"},
         )
@@ -288,12 +288,12 @@ class TestConfigValidation:
         """Test validation catches invalid WPM range."""
         # Should fail at creation due to validator
         with pytest.raises(ValueError, match="WPM min must be less than max"):
-            DeepBriefConfig(analysis={"target_wpm_range": [160, 140]})
+            VideoLensConfig(analysis={"target_wpm_range": [160, 140]})
 
     def test_validate_weights_sum(self) -> None:
         """Test validation of quality weights."""
         # Valid: weights sum to 1.0
-        config = DeepBriefConfig(
+        config = VideoLensConfig(
             visual_analysis={
                 "blur_weight": 0.4,
                 "contrast_weight": 0.3,
@@ -307,7 +307,7 @@ class TestConfigValidation:
         """Test validation catches empty output formats."""
         # Should fail at creation due to validator
         with pytest.raises(ValueError, match="List should have at least 1 item"):
-            DeepBriefConfig(output={"formats": []})
+            VideoLensConfig(output={"formats": []})
 
 
 class TestConfigSchema:
@@ -353,8 +353,8 @@ class TestConfigGlobalInstance:
         """Test that get_config returns a config instance."""
         config = get_config()
 
-        assert isinstance(config, DeepBriefConfig)
-        assert config.app_name == "DeepBrief"
+        assert isinstance(config, VideoLensConfig)
+        assert config.app_name == "Video Lens"
 
     def test_get_config_caches_instance(self) -> None:
         """Test that get_config caches the instance."""
@@ -369,7 +369,7 @@ class TestConfigGlobalInstance:
         # Reset configuration
         reset_config = reset_config_to_defaults()
 
-        assert reset_config.app_name == "DeepBrief"
+        assert reset_config.app_name == "Video Lens"
         assert reset_config.debug is False
 
 
@@ -378,7 +378,7 @@ class TestConfigIntegration:
 
     def test_round_trip_save_and_load(self, temp_dir: Path) -> None:
         """Test saving and loading configuration preserves values."""
-        original_config = DeepBriefConfig(
+        original_config = VideoLensConfig(
             app_name="Integration Test",
             debug=True,
             processing={"max_video_size_mb": 300},
@@ -396,7 +396,7 @@ class TestConfigIntegration:
 
     def test_export_and_reimport_json(self, temp_dir: Path) -> None:
         """Test exporting to JSON and reimporting."""
-        original_config = DeepBriefConfig(
+        original_config = VideoLensConfig(
             app_name="JSON Test", debug=True, processing={"max_video_size_mb": 200}
         )
 
@@ -408,7 +408,7 @@ class TestConfigIntegration:
         with open(json_path) as f:
             data = json.load(f)
 
-        reimported_config = DeepBriefConfig(**data)
+        reimported_config = VideoLensConfig(**data)
 
         assert reimported_config.app_name == "JSON Test"
         assert reimported_config.debug is True
@@ -416,7 +416,7 @@ class TestConfigIntegration:
 
     def test_yaml_and_json_format_consistency(self, temp_dir: Path) -> None:
         """Test that YAML and JSON exports contain equivalent data."""
-        config = DeepBriefConfig(
+        config = VideoLensConfig(
             app_name="Format Test",
             debug=True,
             processing={"max_video_size_mb": 250},

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from deep_brief.analysis.rubric_system import (
+from video_lens.analysis.rubric_system import (
     Rubric,
     RubricAssessment,
     RubricBuilder,

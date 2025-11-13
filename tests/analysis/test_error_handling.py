@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from deep_brief.analysis.error_handling import (
+from video_lens.analysis.error_handling import (
     ErrorRecoveryContext,
     ImageValidationError,
     ModelInitializationError,
@@ -18,7 +18,7 @@ from deep_brief.analysis.error_handling import (
     validate_model_inputs,
     with_retry,
 )
-from deep_brief.core.exceptions import ErrorCode
+from video_lens.core.exceptions import ErrorCode
 
 
 class TestImageValidation:

@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import pytest
 
-from deep_brief.analysis.visual_analyzer import (
+from video_lens.analysis.visual_analyzer import (
     ExtractedFrame,
     FrameExtractor,
     FrameQualityMetrics,
@@ -16,9 +16,9 @@ from deep_brief.analysis.visual_analyzer import (
     VisualAnalysisResult,
     create_frame_extractor,
 )
-from deep_brief.core.exceptions import ErrorCode, VideoProcessingError
-from deep_brief.core.scene_detector import Scene, SceneDetectionResult
-from deep_brief.utils.config import DeepBriefConfig, VisualAnalysisConfig
+from video_lens.core.exceptions import ErrorCode, VideoProcessingError
+from video_lens.core.scene_detector import Scene, SceneDetectionResult
+from video_lens.utils.config import VideoLensConfig, VisualAnalysisConfig
 
 
 def create_test_quality_metrics(
@@ -103,7 +103,7 @@ def create_test_quality_metrics(
 @pytest.fixture
 def mock_config():
     """Create mock configuration for testing."""
-    config = DeepBriefConfig(
+    config = VideoLensConfig(
         visual_analysis=VisualAnalysisConfig(
             frames_per_scene=3,
             frame_quality=85,
@@ -568,7 +568,7 @@ class TestFrameExtractor:
 
     def test_initialization_default_config(self):
         """Test FrameExtractor initialization with default config."""
-        with patch("deep_brief.analysis.visual_analyzer.get_config") as mock_get_config:
+        with patch("video_lens.analysis.visual_analyzer.get_config") as mock_get_config:
             mock_config = MagicMock()
             mock_get_config.return_value = mock_config
 
@@ -783,7 +783,7 @@ class TestFrameExtractorFactory:
 
     def test_create_frame_extractor_no_config(self):
         """Test creating FrameExtractor without config."""
-        with patch("deep_brief.analysis.visual_analyzer.get_config") as mock_get_config:
+        with patch("video_lens.analysis.visual_analyzer.get_config") as mock_get_config:
             mock_config = MagicMock()
             mock_get_config.return_value = mock_config
 
@@ -869,7 +869,7 @@ class TestFrameExtractionIntegration:
     ):
         """Test frame extraction with quality filtering enabled."""
         # Create config with strict quality filtering
-        config = DeepBriefConfig(
+        config = VideoLensConfig(
             visual_analysis=VisualAnalysisConfig(
                 frames_per_scene=2,
                 enable_quality_filtering=True,
@@ -984,7 +984,7 @@ class TestFrameExtractionIntegration:
 
             # Mock the captioner
             with patch.object(frame_extractor, "_caption_frame") as mock_caption_frame:
-                from deep_brief.analysis.image_captioner import CaptionResult
+                from video_lens.analysis.image_captioner import CaptionResult
 
                 mock_caption_frame.return_value = CaptionResult(
                     caption="A test frame with geometric shapes",
@@ -1039,7 +1039,7 @@ class TestFrameExtractionIntegration:
             with patch.object(
                 frame_extractor, "_extract_text_from_frame"
             ) as mock_ocr_frame:
-                from deep_brief.analysis.ocr_detector import OCRResult, TextRegion
+                from video_lens.analysis.ocr_detector import OCRResult, TextRegion
 
                 mock_ocr_frame.return_value = OCRResult(
                     text_regions=[

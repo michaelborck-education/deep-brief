@@ -31,13 +31,13 @@ except ImportError:
     _easyocr_available = False
     easyocr = None  # type: ignore
 
-from deep_brief.analysis.error_handling import (
+from video_lens.analysis.error_handling import (
     ModelInitializationError,
     validate_image,
     with_retry,
 )
-from deep_brief.core.exceptions import ErrorCode, VideoProcessingError
-from deep_brief.utils.config import get_config
+from video_lens.core.exceptions import ErrorCode, VideoProcessingError
+from video_lens.utils.config import get_config
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from deep_brief.core.exceptions import (
+from video_lens.core.exceptions import (
     AudioProcessingError,
     ErrorCode,
     FFmpegError,
@@ -15,7 +15,7 @@ from deep_brief.core.exceptions import (
     get_user_friendly_message,
     handle_ffmpeg_error,
 )
-from deep_brief.core.video_processor import VideoProcessor
+from video_lens.core.video_processor import VideoProcessor
 
 
 class TestCustomExceptions:
@@ -313,7 +313,7 @@ class TestAudioExtractorErrorHandling:
 
     def test_extract_audio_no_audio_stream(self):
         """Test audio extraction with no audio stream."""
-        from deep_brief.core.audio_extractor import AudioExtractor
+        from video_lens.core.audio_extractor import AudioExtractor
 
         extractor = AudioExtractor()
 
@@ -334,7 +334,7 @@ class TestAudioExtractorErrorHandling:
 
     def test_extract_audio_invalid_metadata(self):
         """Test audio extraction with invalid metadata."""
-        from deep_brief.core.audio_extractor import AudioExtractor
+        from video_lens.core.audio_extractor import AudioExtractor
 
         extractor = AudioExtractor()
 
@@ -363,7 +363,7 @@ class TestIntegratedErrorHandling:
 
     def test_pipeline_coordinator_error_aggregation(self):
         """Test that PipelineCoordinator properly aggregates errors."""
-        from deep_brief.core.pipeline_coordinator import VideoAnalysisResult
+        from video_lens.core.pipeline_coordinator import VideoAnalysisResult
 
         # Create a video analysis result
         result = VideoAnalysisResult(video_info=MagicMock())
@@ -390,7 +390,7 @@ class TestIntegratedErrorHandling:
 
     def test_error_message_priority(self):
         """Test that first error sets the main error message."""
-        from deep_brief.core.pipeline_coordinator import VideoAnalysisResult
+        from video_lens.core.pipeline_coordinator import VideoAnalysisResult
 
         result = VideoAnalysisResult(video_info=MagicMock())
 
@@ -409,10 +409,10 @@ class TestIntegratedErrorHandling:
         # First error should set the main message
         assert "could not be found" in result.error_message.lower()
 
-    @patch("deep_brief.core.video_processor.VideoProcessor.validate_file")
+    @patch("video_lens.core.video_processor.VideoProcessor.validate_file")
     def test_pipeline_validation_error_handling(self, mock_validate):
         """Test pipeline coordinator handling validation errors."""
-        from deep_brief.core.pipeline_coordinator import PipelineCoordinator
+        from video_lens.core.pipeline_coordinator import PipelineCoordinator
 
         # Mock validation to raise error
         validation_error = FileValidationError(
@@ -439,9 +439,9 @@ class TestErrorRecovery:
         """Test that audio extraction failure doesn't stop video processing."""
         from pathlib import Path
 
-        from deep_brief.core.pipeline_coordinator import PipelineCoordinator
-        from deep_brief.core.scene_detector import SceneDetectionResult
-        from deep_brief.core.video_processor import VideoInfo
+        from video_lens.core.pipeline_coordinator import PipelineCoordinator
+        from video_lens.core.scene_detector import SceneDetectionResult
+        from video_lens.core.video_processor import VideoInfo
 
         coordinator = PipelineCoordinator()
 
@@ -495,7 +495,7 @@ class TestErrorRecovery:
 
     def test_graceful_degradation_multiple_errors(self):
         """Test graceful degradation with multiple errors."""
-        from deep_brief.core.pipeline_coordinator import VideoAnalysisResult
+        from video_lens.core.pipeline_coordinator import VideoAnalysisResult
 
         result = VideoAnalysisResult(video_info=MagicMock())
 

@@ -3,20 +3,20 @@
 import numpy as np
 import pytest
 
-from deep_brief.analysis.visual_analyzer import (
+from video_lens.analysis.visual_analyzer import (
     ExtractedFrame,
     FrameExtractor,
     FrameQualityMetrics,
     SceneFrameAnalysis,
     VisualAnalysisResult,
 )
-from deep_brief.utils.config import DeepBriefConfig, VisualAnalysisConfig
+from video_lens.utils.config import VideoLensConfig, VisualAnalysisConfig
 
 
 @pytest.fixture
 def mock_config():
     """Create mock configuration for testing."""
-    config = DeepBriefConfig(
+    config = VideoLensConfig(
         visual_analysis=VisualAnalysisConfig(
             frames_per_scene=3,
             frame_quality=85,

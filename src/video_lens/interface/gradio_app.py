@@ -1,4 +1,4 @@
-"""Gradio web interface for DeepBrief video analysis."""
+"""Gradio web interface for Video Lens video analysis."""
 
 import logging
 from pathlib import Path
@@ -6,9 +6,9 @@ from typing import Any
 
 import gradio as gr  # type: ignore[import-untyped]
 
-from deep_brief.core.pipeline_coordinator import PipelineCoordinator
-from deep_brief.utils.config import get_config
-from deep_brief.utils.progress_display import CLIProgressTracker
+from video_lens.core.pipeline_coordinator import PipelineCoordinator
+from video_lens.utils.config import get_config
+from video_lens.utils.progress_display import CLIProgressTracker
 
 logger = logging.getLogger(__name__)
 
@@ -225,8 +225,8 @@ class GradioInterface:
             # Footer
             gr.HTML("""
             <div style="text-align: center; margin-top: 2rem; color: #666;">
-                <p>DeepBrief v0.1.0 - Video Analysis Application</p>
-                <p><a href="https://github.com/michael-borck/deep-brief" target="_blank">GitHub</a></p>
+                <p>Video Lens v0.5.0 - Video Analysis Lens for Modular Assessment</p>
+                <p><a href="https://github.com/michaelborck-education/video-lens" target="_blank">GitHub</a></p>
             </div>
             """)
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from deep_brief.reports.report_generator import (
+from video_lens.reports.report_generator import (
     APICostSummary,
     ReportCustomization,
     ReportFormat,

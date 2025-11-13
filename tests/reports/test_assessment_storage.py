@@ -4,10 +4,10 @@ import tempfile
 
 import pytest
 
-from deep_brief.reports.assessment_report import (
+from video_lens.reports.assessment_report import (
     AssessmentReport,
 )
-from deep_brief.reports.assessment_storage import AssessmentStorage
+from video_lens.reports.assessment_storage import AssessmentStorage
 
 
 class TestAssessmentStorage:

@@ -15,15 +15,15 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel
 
-from deep_brief.analysis.visual_analyzer import (
+from video_lens.analysis.visual_analyzer import (
     ExtractedFrame,
     FrameExtractor,
     VisualAnalysisResult,
 )
-from deep_brief.core.exceptions import ErrorCode, VideoProcessingError
-from deep_brief.core.progress_tracker import ProgressTracker
-from deep_brief.core.scene_detector import SceneDetectionResult
-from deep_brief.utils.config import get_config
+from video_lens.core.exceptions import ErrorCode, VideoProcessingError
+from video_lens.core.progress_tracker import ProgressTracker
+from video_lens.core.scene_detector import SceneDetectionResult
+from video_lens.utils.config import get_config
 
 logger = logging.getLogger(__name__)
 

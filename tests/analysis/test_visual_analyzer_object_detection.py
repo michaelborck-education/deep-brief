@@ -8,14 +8,14 @@ import cv2
 import numpy as np
 import pytest
 
-from deep_brief.analysis.object_detector import (
+from video_lens.analysis.object_detector import (
     DetectedObject,
     ObjectDetectionResult,
     PresentationElement,
 )
-from deep_brief.analysis.visual_analyzer import ExtractedFrame, FrameExtractor
-from deep_brief.core.scene_detector import Scene, SceneDetectionResult
-from deep_brief.utils.config import DeepBriefConfig, VisualAnalysisConfig
+from video_lens.analysis.visual_analyzer import ExtractedFrame, FrameExtractor
+from video_lens.core.scene_detector import Scene, SceneDetectionResult
+from video_lens.utils.config import VideoLensConfig, VisualAnalysisConfig
 
 
 def create_test_quality_metrics():
@@ -30,7 +30,7 @@ def create_test_quality_metrics():
 @pytest.fixture
 def mock_config_with_object_detection():
     """Create mock configuration with object detection enabled."""
-    config = DeepBriefConfig(
+    config = VideoLensConfig(
         visual_analysis=VisualAnalysisConfig(
             frames_per_scene=2,
             frame_quality=85,

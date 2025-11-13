@@ -17,8 +17,8 @@ import numpy as np
 from PIL import Image
 from pydantic import BaseModel
 
-from deep_brief.utils.api_keys import APIProvider, get_api_key_with_validation
-from deep_brief.utils.config import get_config
+from video_lens.utils.api_keys import APIProvider, get_api_key_with_validation
+from video_lens.utils.config import get_config
 
 logger = logging.getLogger(__name__)
 

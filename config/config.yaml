@@ -1,9 +1,9 @@
-# DeepBrief Configuration File
-# This file contains the default configuration for the DeepBrief application.
-# You can override these settings with environment variables using the DEEP_BRIEF_ prefix.
+# Video Lens Configuration File
+# This file contains the default configuration for the Video Lens application.
+# You can override these settings with environment variables using the VIDEO_LENS_ prefix.
 
 # Application settings
-app_name: "DeepBrief"
+app_name: "Video Lens"
 debug: false
 
 # Video processing configuration

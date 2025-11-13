@@ -6,6 +6,11 @@ from pathlib import Path
 
 import pytest
 
+# Reset global config before tests
+from video_lens.utils.config import reload_config
+
+reload_config()
+
 
 @pytest.fixture
 def temp_dir() -> Generator[Path, None, None]:

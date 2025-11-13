@@ -15,14 +15,14 @@ from typing import Any
 import ffmpeg
 from pydantic import BaseModel
 
-from deep_brief.core.exceptions import (
+from video_lens.core.exceptions import (
     ErrorCode,
     FileValidationError,
     FrameExtractionError,
     VideoProcessingError,
     handle_ffmpeg_error,
 )
-from deep_brief.utils.config import get_config
+from video_lens.utils.config import get_config
 
 logger = logging.getLogger(__name__)
 

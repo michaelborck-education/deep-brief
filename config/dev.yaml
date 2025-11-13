@@ -2,7 +2,7 @@
 # This configuration enables debug mode and verbose logging for development
 
 # Application settings
-app_name: "DeepBrief (Development)"
+app_name: "Video Lens (Development)"
 debug: true
 
 # Inherit most settings from default config, override specific ones

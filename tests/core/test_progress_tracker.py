@@ -3,7 +3,7 @@
 import time
 from unittest.mock import MagicMock
 
-from deep_brief.core.progress_tracker import (
+from video_lens.core.progress_tracker import (
     CompositeProgressTracker,
     OperationStatus,
     ProgressTracker,

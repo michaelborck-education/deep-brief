@@ -10,13 +10,13 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from deep_brief.core.exceptions import VideoProcessingError
-from deep_brief.core.pipeline_coordinator import PipelineCoordinator
-from deep_brief.utils.config import DeepBriefConfig, get_config, load_config
-from deep_brief.utils.progress_display import CLIProgressTracker
+from video_lens.core.exceptions import VideoProcessingError
+from video_lens.core.pipeline_coordinator import PipelineCoordinator
+from video_lens.utils.config import DeepBriefConfig, get_config, load_config
+from video_lens.utils.progress_display import CLIProgressTracker
 
 if TYPE_CHECKING:
-    from deep_brief.analysis.rubric_system import RubricRepository
+    from video_lens.analysis.rubric_system import RubricRepository
 
 console = Console()
 app = typer.Typer(help="DeepBrief - Video Analysis Application")
@@ -86,11 +86,11 @@ def analyze(
     If no video path is provided, launches the web interface.
 
     Examples:
-        deep-brief analyze video.mp4
-        deep-brief analyze video.mp4 --grade
-        deep-brief analyze video.mp4 --grade --rubric-type academic --feedback-detail long
-        deep-brief analyze video.mp4 --rubric-type academic --feedback-audience teacher
-        deep-brief analyze video.mp4 --rubric-file my-rubric.json --api-provider anthropic
+        video-lens analyze video.mp4
+        video-lens analyze video.mp4 --grade
+        video-lens analyze video.mp4 --grade --rubric-type academic --feedback-detail long
+        video-lens analyze video.mp4 --rubric-type academic --feedback-audience teacher
+        video-lens analyze video.mp4 --rubric-file my-rubric.json --api-provider anthropic
     """
     # Load configuration
     config = load_config(config_file) if config_file else get_config()
@@ -104,10 +104,10 @@ def analyze(
         config.visual_analysis.api_model = api_model
 
     # Set up logging
-    logger = logging.getLogger("deep_brief")
+    logger = logging.getLogger("video_lens")
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
-    logger.info("Starting DeepBrief analysis")
+    logger.info("Starting Video Lens analysis")
 
     console.print(
         Panel.fit(
@@ -399,8 +399,8 @@ def _analyze_video_cli(
         if effective_rubric_type or rubric_file:
             console.print("\n[bold cyan]Generating grading feedback...[/bold cyan]")
             try:
-                from deep_brief.analysis.default_rubrics import get_default_rubric
-                from deep_brief.analysis.rubric_system import Rubric
+                from video_lens.analysis.default_rubrics import get_default_rubric
+                from video_lens.analysis.rubric_system import Rubric
 
                 # Load rubric
                 if effective_rubric_type:
@@ -499,7 +499,7 @@ def _analyze_video_cli(
 @app.command()
 def version() -> None:
     """Show version information."""
-    from deep_brief import __version__
+    from video_lens import __version__
 
     console.print(f"DeepBrief version {__version__}")
 
@@ -582,8 +582,8 @@ def rubric(
         export  - Export a rubric to JSON file
         delete  - Delete a custom rubric
     """
-    from deep_brief.analysis.default_rubrics import list_default_rubrics
-    from deep_brief.analysis.rubric_system import RubricRepository
+    from video_lens.analysis.default_rubrics import list_default_rubrics
+    from video_lens.analysis.rubric_system import RubricRepository
 
     try:
         repo = RubricRepository(rubrics_dir)
@@ -634,14 +634,14 @@ def rubric(
 
 def _rubric_list(repo: "RubricRepository") -> None:
     """List all rubrics."""
-    from deep_brief.analysis.default_rubrics import (
+    from video_lens.analysis.default_rubrics import (
         get_default_rubric,
         list_default_rubrics,
     )
 
     console.print("\n[bold]Available Default Rubrics[/bold]")
     console.print(
-        "[dim](Can be created with: deep-brief rubric create --type <type>)[/dim]\n"
+        "[dim](Can be created with: video-lens rubric create --type <type>)[/dim]\n"
     )
 
     for rubric_type in list_default_rubrics():
@@ -668,7 +668,7 @@ def _rubric_list(repo: "RubricRepository") -> None:
             console.print(f"    Created: {rubric.created_at.strftime('%Y-%m-%d')}\n")
     else:
         console.print(
-            "[dim]No custom rubrics yet. Create one with 'deep-brief rubric create'[/dim]\n"
+            "[dim]No custom rubrics yet. Create one with 'video-lens rubric create'[/dim]\n"
         )
 
 
@@ -706,7 +706,7 @@ def _rubric_show(repo: "RubricRepository", rubric_id: str) -> None:
 
 def _rubric_create(repo: "RubricRepository", rubric_type: str) -> None:
     """Create a rubric from a default template."""
-    from deep_brief.analysis.default_rubrics import get_default_rubric
+    from video_lens.analysis.default_rubrics import get_default_rubric
 
     rubric = get_default_rubric(rubric_type)
     if not rubric:
@@ -784,7 +784,7 @@ def _generate_grading_feedback(
     Raises:
         typer.Exit: If API key not found or LLM call fails
     """
-    from deep_brief.utils.api_keys import get_api_key
+    from video_lens.utils.api_keys import get_api_key
 
     # Apply defaults
     audience = audience or "student"
